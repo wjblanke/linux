@@ -147,7 +147,6 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 	struct file *dirf;
 	struct chi_names_ctx nctx;
 	int i, err, best = -1;
-	u64 best_sz = U64_MAX;
 	struct dentry *victim;
 
 	mnt = sb_sample_vfsmnt(sb);
@@ -194,9 +193,10 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 
 		if (IS_ERR(inode))
 			continue;
-		if (S_ISREG(inode->i_mode) && (u64)inode->i_size <= best_sz) {
-			best_sz = inode->i_size;
+		if (S_ISREG(inode->i_mode)) {
 			best = i;
+			iput(inode);
+			break;
 		}
 		iput(inode);
 	}

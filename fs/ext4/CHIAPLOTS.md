@@ -9,7 +9,7 @@ This note describes optional behavior added for a directory named `.chiaplots` a
    Physically those blocks remain allocated; this only affects what `statfs()` (and thus tools like `df`) report.
 
 2. **Automatic eviction on allocation failure**  
-   When the allocator would fail with **ENOSPC** because not enough clusters are free, the filesystem tries to delete **regular files** in `/.chiaplots`, choosing the **smallest logical size** (`i_size`) first, until either enough space is available for the pending reservation/allocation or nothing removable remains.  
+   When the allocator would fail with **ENOSPC** because not enough clusters are free, the filesystem tries to delete **regular files** in `/.chiaplots`, removing the **first regular file** encountered in each directory scan (readdir order), until either enough space is available for the pending reservation/allocation or nothing removable remains.  
    Read-only mounts skip eviction.
 
 ## Implementation map
@@ -28,7 +28,7 @@ This note describes optional behavior added for a directory named `.chiaplots` a
 ## Limits and semantics
 
 - Only the directory **`/<mount-root>/.chiaplots`** is considered (single path segment `.chiaplots` under the ext4 root dentry).
-- Eviction scans at most **128** directory entries per pass; if there are more files, only that subset is considered when picking the “smallest” file.
+- Eviction scans at most **128** directory entries per pass; if there are more files, only that subset is visible to each eviction pass, so the “first” file is the first regular file among those entries in readdir order.
 - Statfs aggregation walks directory entries and uses `ext4_iget()` per inode number; large directories may make `statfs` heavier than usual.
 - Eviction uses the same permission and unlink paths as normal `unlink`; failures (permissions, immutable attributes, etc.) stop the eviction loop for that allocation attempt.
 
