@@ -6976,6 +6976,8 @@ static int ext4_statfs(struct dentry *dentry, struct kstatfs *buf)
 	buf->f_namelen = EXT4_NAME_LEN;
 	buf->f_fsid = uuid_to_fsid(es->s_uuid);
 
+	ext4_chiaplots_adjust_statfs(sb, buf);
+
 #ifdef CONFIG_QUOTA
 	if (ext4_test_inode_flag(dentry->d_inode, EXT4_INODE_PROJINHERIT) &&
 	    sb_has_quota_limits_enabled(sb, PRJQUOTA))

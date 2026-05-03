@@ -1636,6 +1636,8 @@ static int ext4_da_reserve_space(struct inode *inode, int nr_resv)
 	if (ret)
 		return ret;
 
+	ext4_chiaplots_try_make_space(sbi, nr_resv, 0);
+
 	spin_lock(&ei->i_block_reservation_lock);
 	if (ext4_claim_free_clusters(sbi, nr_resv, 0)) {
 		spin_unlock(&ei->i_block_reservation_lock);

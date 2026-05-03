@@ -2792,6 +2792,12 @@ extern ext4_fsblk_t ext4_new_meta_blocks(handle_t *handle, struct inode *inode,
 					 int *errp);
 extern int ext4_claim_free_clusters(struct ext4_sb_info *sbi,
 				    s64 nclusters, unsigned int flags);
+extern int ext4_has_free_clusters(struct ext4_sb_info *sbi,
+				  s64 nclusters, unsigned int flags);
+extern void ext4_chiaplots_adjust_statfs(struct super_block *sb,
+					 struct kstatfs *buf);
+extern void ext4_chiaplots_try_make_space(struct ext4_sb_info *sbi,
+					  s64 nclusters, unsigned int flags);
 extern ext4_fsblk_t ext4_count_free_clusters(struct super_block *);
 extern struct ext4_group_desc * ext4_get_group_desc(struct super_block * sb,
 						    ext4_group_t block_group,

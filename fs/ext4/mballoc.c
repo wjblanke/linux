@@ -6255,6 +6255,7 @@ ext4_fsblk_t ext4_mb_new_blocks(handle_t *handle,
 		 * there is enough free blocks to do block allocation
 		 * and verify allocation doesn't exceed the quota limits.
 		 */
+		ext4_chiaplots_try_make_space(sbi, ar->len, ar->flags);
 		while (ar->len &&
 			ext4_claim_free_clusters(sbi, ar->len, ar->flags)) {
 

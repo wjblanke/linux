@@ -617,8 +617,8 @@ ext4_read_block_bitmap(struct super_block *sb, ext4_group_t block_group)
  * Check if filesystem has nclusters free & available for allocation.
  * On success return 1, return 0 on failure.
  */
-static int ext4_has_free_clusters(struct ext4_sb_info *sbi,
-				  s64 nclusters, unsigned int flags)
+int ext4_has_free_clusters(struct ext4_sb_info *sbi,
+			     s64 nclusters, unsigned int flags)
 {
 	s64 free_clusters, dirty_clusters, rsv, resv_clusters;
 	struct percpu_counter *fcc = &sbi->s_freeclusters_counter;

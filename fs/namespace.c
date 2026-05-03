@@ -820,6 +820,28 @@ struct vfsmount *lookup_mnt(const struct path *path)
 	return m;
 }
 
+/**
+ * sb_sample_vfsmnt - obtain any vfsmount instantiating @sb
+ *
+ * Returns a referenced vfsmount, or ERR_PTR(-ENOENT) if none exists (e.g.
+ * during late unmount).  Intended for kernel helpers that need a mount
+ * pointer without walking from user paths.
+ */
+struct vfsmount *sb_sample_vfsmnt(struct super_block *sb)
+{
+	struct mount *m;
+	struct vfsmount *ret;
+
+	guard(mount_locked_reader)();
+	for (m = sb->s_mounts; m; m = m->mnt_next_for_sb) {
+		ret = &m->mnt;
+		mntget(ret);
+		return ret;
+	}
+	return ERR_PTR(-ENOENT);
+}
+EXPORT_SYMBOL_GPL(sb_sample_vfsmnt);
+
 /*
  * __is_local_mountpoint - Test to see if dentry is a mountpoint in the
  *                         current mount namespace.
