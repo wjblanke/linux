@@ -9,7 +9,8 @@
 #include <linux/mount.h>
 #include <linux/mnt_idmapping.h>
 #include <linux/namei.h>
-#include <linux/readdir.h>
+#include <linux/slab.h>
+#include <linux/statfs.h>
 #include "ext4.h"
 
 #define CHIAPLOTS_DIR ".chiaplots"
@@ -145,7 +146,7 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 	struct dentry *chi;
 	struct path path;
 	struct file *dirf;
-	struct chi_names_ctx nctx;
+	struct chi_names_ctx *nctx = NULL;
 	int i, err, best = -1;
 	struct dentry *victim;
 
@@ -176,20 +177,27 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 		goto out_mnt;
 	}
 
-	memset(&nctx, 0, sizeof(nctx));
-	nctx.ctx.actor = chi_names_actor;
-	err = iterate_dir(dirf, &nctx.ctx);
+	nctx = kmalloc(sizeof(*nctx), GFP_NOFS);
+	if (!nctx) {
+		err = -ENOMEM;
+		fput(dirf);
+		goto out_mnt;
+	}
+
+	memset(nctx, 0, sizeof(*nctx));
+	nctx->ctx.actor = chi_names_actor;
+	err = iterate_dir(dirf, &nctx->ctx);
 	fput(dirf);
 	if (err)
 		goto out_mnt;
-	if (!nctx.n) {
+	if (!nctx->n) {
 		err = -ENOENT;
 		goto out_mnt;
 	}
 
-	for (i = 0; i < nctx.n; i++) {
+	for (i = 0; i < nctx->n; i++) {
 		struct inode *inode =
-			ext4_iget(sb, nctx.inos[i], EXT4_IGET_NORMAL);
+			ext4_iget(sb, nctx->inos[i], EXT4_IGET_NORMAL);
 
 		if (IS_ERR(inode))
 			continue;
@@ -224,7 +232,7 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 
 	inode_lock(chi->d_inode);
 	victim = lookup_one(&nop_mnt_idmap,
-			    &QSTR_LEN(nctx.names[best], strlen(nctx.names[best])),
+			    &QSTR_LEN(nctx->names[best], strlen(nctx->names[best])),
 			    chi);
 	if (IS_ERR(victim)) {
 		err = PTR_ERR(victim);
@@ -248,6 +256,7 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 out_drop_write:
 	mnt_drop_write(mnt);
 out_mnt:
+	kfree(nctx);
 	mntput(mnt);
 	return err;
 }
