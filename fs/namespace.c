@@ -833,6 +833,19 @@ struct vfsmount *sb_sample_vfsmnt(struct super_block *sb)
 	struct vfsmount *ret;
 
 	guard(mount_locked_reader)();
+	/*
+	 * Prefer a mount whose root dentry is the superblock's root.  The
+	 * first entry on s_mounts can be a bind mount of a subdirectory; in
+	 * that case mnt_root != sb->s_root and dentries under sb->s_root are
+	 * not reachable from that mount for dentry_open(path).
+	 */
+	for (m = sb->s_mounts; m; m = m->mnt_next_for_sb) {
+		if (m->mnt.mnt_root != sb->s_root)
+			continue;
+		ret = &m->mnt;
+		mntget(ret);
+		return ret;
+	}
 	for (m = sb->s_mounts; m; m = m->mnt_next_for_sb) {
 		ret = &m->mnt;
 		mntget(ret);

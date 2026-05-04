@@ -35,3 +35,5 @@ This note describes optional behavior added for a directory named `.chiaplots` a
 ## Rationale for `sb_sample_vfsmnt`
 
 `statfs` and allocation helpers only receive a `super_block` or `ext4_sb_info`, not a `vfsmount`. Opening a directory with `dentry_open()` requires a valid `struct path` including a mount. `sb_sample_vfsmnt()` walks the superblock’s mount list (VFS-internal) and returns one referenced mount, which is enough to open `/.chiaplots` for iteration and unlink.
+
+That helper **prefers** a mount whose `mnt_root` equals `sb->s_root` (the usual mount of the whole filesystem). If it returned only the first list entry, that entry could be a **bind mount** of a subdirectory (`mnt_root != sb->s_root`); pairing that mount with dentries looked up under `sb->s_root` makes `dentry_open()` fail, so statfs would show **no** extra “free” space even when `/.chiaplots` exists.
