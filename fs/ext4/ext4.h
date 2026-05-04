@@ -2796,6 +2796,7 @@ extern int ext4_has_free_clusters(struct ext4_sb_info *sbi,
 				  s64 nclusters, unsigned int flags);
 extern void ext4_chiaplots_adjust_statfs(struct super_block *sb,
 					 struct kstatfs *buf);
+extern bool ext4_is_parent_in_chiaplots_subtree(struct dentry *parent);
 extern void ext4_chiaplots_try_make_space(struct ext4_sb_info *sbi,
 					  s64 nclusters, unsigned int flags);
 extern ext4_fsblk_t ext4_count_free_clusters(struct super_block *);

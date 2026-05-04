@@ -1,6 +1,6 @@
 # Root `.chiaplots` handling (ext4)
 
-This note describes optional behavior added for a directory named `.chiaplots` at the **filesystem root** (i.e. the root inode’s child `.chiaplots`, not deeper paths).
+This note describes optional behavior for a directory named `.chiaplots` at the **filesystem root** (the root inode’s child `.chiaplots`, not deeper paths).
 
 ## Overview
 
@@ -8,7 +8,12 @@ This note describes optional behavior added for a directory named `.chiaplots` a
    Disk blocks used by **regular files** directly inside `/.chiaplots` are added back into the reported free block counts (`f_bfree`, `f_bavail`), capped so totals never exceed `f_blocks`.  
    Physically those blocks remain allocated; this only affects what `statfs()` (and thus tools like `df`) report.
 
-2. **Automatic eviction on allocation failure**  
+2. **No new entries via “copy” APIs**  
+   Creating a **new** name inside `/.chiaplots` or any subdirectory (`create`, `mkdir`, `mknod`, `symlink`, `link`, `tmpfile`) returns **-EPERM**.  
+   **`rename`** (same-filesystem `mv`) is unchanged: existing inodes can be moved into or within `.chiaplots` without creating a new inode.  
+   Cross-filesystem “mv” is implemented as copy+unlink in userland and still hits **create** on the destination — blocked when the destination path is under `.chiaplots`.
+
+3. **Automatic eviction on allocation failure**  
    When the allocator would fail with **ENOSPC** because not enough clusters are free, the filesystem tries to delete **regular files** in `/.chiaplots`, removing the **first regular file** encountered in each directory scan (readdir order), until either enough space is available for the pending reservation/allocation or nothing removable remains.  
    Read-only mounts skip eviction.
 
@@ -16,24 +21,23 @@ This note describes optional behavior added for a directory named `.chiaplots` a
 
 | Area | Change |
 |------|--------|
-| `fs/namespace.c` | Adds `sb_sample_vfsmnt()` — returns any `vfsmount` referencing the given `super_block` so kernel code can open paths without a user pathname. |
-| `fs/ext4/chiaplots.c` | Implements scanning `/.chiaplots`, statfs adjustment, and eviction (`vfs_unlink`). |
-| `fs/ext4/balloc.c` | `ext4_has_free_clusters()` is no longer `static` so eviction can re-check free space. |
+| `fs/namespace.c` | Adds `sb_sample_vfsmnt()` for eviction paths that need a `vfsmount`. |
+| `fs/ext4/chiaplots.c` | `ext4_is_parent_in_chiaplots_subtree()`, statfs adjustment, eviction. |
+| `fs/ext4/namei.c` | Deny create-like operations under `.chiaplots` (`-EPERM`). |
+| `fs/ext4/balloc.c` | `ext4_has_free_clusters()` is not `static` so eviction can re-check free space. |
 | `fs/ext4/super.c` | After filling `kstatfs`, calls `ext4_chiaplots_adjust_statfs()`. |
-| `fs/ext4/inode.c` | Before reserving clusters for delayed allocation, calls `ext4_chiaplots_try_make_space()` (must run **before** taking `i_block_reservation_lock`; eviction may sleep). |
-| `fs/ext4/mballoc.c` | Before the existing `ext4_claim_free_clusters()` loop, calls `ext4_chiaplots_try_make_space()`. |
+| `fs/ext4/inode.c` | Before reserving clusters for delayed allocation, calls `ext4_chiaplots_try_make_space()`. |
+| `fs/ext4/mballoc.c` | Before `ext4_claim_free_clusters()`, calls `ext4_chiaplots_try_make_space()`. |
 | `fs/ext4/Makefile` | Builds `chiaplots.o`. |
-| `fs/ext4/ext4.h` | Declarations for the helpers above and `ext4_has_free_clusters()`. |
+| `fs/ext4/ext4.h` | Declarations for chiaplots helpers and `ext4_has_free_clusters()`. |
 
 ## Limits and semantics
 
-- Only the directory **`/<mount-root>/.chiaplots`** is considered (single path segment `.chiaplots` under the ext4 root dentry).
-- Eviction scans at most **128** directory entries per pass; if there are more files, only that subset is visible to each eviction pass, so the “first” file is the first regular file among those entries in readdir order.
-- Statfs aggregation walks directory entries and uses `ext4_iget()` per inode number; large directories may make `statfs` heavier than usual.
-- Eviction uses the same permission and unlink paths as normal `unlink`; failures (permissions, immutable attributes, etc.) stop the eviction loop for that allocation attempt.
+- Path recognition walks dentry parents and matches the root-level name **`.chiaplots`** (case-sensitive). Encrypted or casefolded directory names may not match.
+- Only **`/<mount-root>/.chiaplots`** and its subtree are affected.
+- Eviction scans at most **128** directory entries per pass.
+- Eviction uses normal `vfs_unlink`; failures stop the eviction loop for that allocation attempt.
 
 ## Rationale for `sb_sample_vfsmnt`
 
-`statfs` and allocation helpers only receive a `super_block` or `ext4_sb_info`, not a `vfsmount`. Opening a directory with `dentry_open()` requires a valid `struct path` including a mount. `sb_sample_vfsmnt()` walks the superblock’s mount list (VFS-internal) and returns one referenced mount, which is enough to open `/.chiaplots` for iteration and unlink.
-
-That helper **prefers** a mount whose `mnt_root` equals `sb->s_root` (the usual mount of the whole filesystem). If it returned only the first list entry, that entry could be a **bind mount** of a subdirectory (`mnt_root != sb->s_root`); pairing that mount with dentries looked up under `sb->s_root` makes `dentry_open()` fail, so statfs would show **no** extra “free” space even when `/.chiaplots` exists.
+Eviction needs to open `/.chiaplots` without a user-supplied path. `sb_sample_vfsmnt()` returns a referenced `vfsmount`, preferring `mnt_root == sb->s_root` so `dentry_open()` works for dentries under the filesystem root.

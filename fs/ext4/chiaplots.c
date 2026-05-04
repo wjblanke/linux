@@ -14,9 +14,40 @@
 #include "ext4.h"
 
 #define CHIAPLOTS_DIR ".chiaplots"
+#define CHIAPLOTS_NAMLEN (sizeof(CHIAPLOTS_DIR) - 1)
 #define CHIAPLOTS_MAX_NAMES 128
 
 struct vfsmount *sb_sample_vfsmnt(struct super_block *sb);
+
+/*
+ * True iff @parent is the filesystem root's .chiaplots directory or a
+ * subdirectory of it (@parent is typically dentry->d_parent of the new name).
+ * rename() does not create new dentries through ->create; cp uses create/link/write.
+ */
+bool ext4_is_parent_in_chiaplots_subtree(struct dentry *parent)
+{
+	struct dentry *cur;
+	struct dentry *root;
+
+	if (!parent || !parent->d_sb || !parent->d_sb->s_root)
+		return false;
+
+	root = parent->d_sb->s_root;
+
+	rcu_read_lock();
+	for (cur = parent; cur != root; cur = cur->d_parent) {
+		if (cur->d_parent == root) {
+			const struct qstr *n = &cur->d_name;
+			bool hit = (n->len == CHIAPLOTS_NAMLEN &&
+				    !memcmp(n->name, CHIAPLOTS_DIR, CHIAPLOTS_NAMLEN));
+
+			rcu_read_unlock();
+			return hit;
+		}
+	}
+	rcu_read_unlock();
+	return false;
+}
 
 struct chi_sum_ctx {
 	struct dir_context ctx;

@@ -2821,6 +2821,9 @@ static int ext4_create(struct mnt_idmap *idmap, struct inode *dir,
 	if (err)
 		return err;
 
+	if (ext4_is_parent_in_chiaplots_subtree(dentry->d_parent))
+		return -EPERM;
+
 	credits = (EXT4_DATA_TRANS_BLOCKS(dir->i_sb) +
 		   EXT4_INDEX_EXTRA_TRANS_BLOCKS + 3);
 retry:
@@ -2856,6 +2859,9 @@ static int ext4_mknod(struct mnt_idmap *idmap, struct inode *dir,
 	if (err)
 		return err;
 
+	if (ext4_is_parent_in_chiaplots_subtree(dentry->d_parent))
+		return -EPERM;
+
 	credits = (EXT4_DATA_TRANS_BLOCKS(dir->i_sb) +
 		   EXT4_INDEX_EXTRA_TRANS_BLOCKS + 3);
 retry:
@@ -2889,6 +2895,18 @@ static int ext4_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
 	err = dquot_initialize(dir);
 	if (err)
 		return err;
+
+	if (S_ISDIR(dir->i_mode)) {
+		struct dentry *ad = d_find_any_alias(dir);
+
+		if (ad) {
+			if (ext4_is_parent_in_chiaplots_subtree(ad)) {
+				dput(ad);
+				return -EPERM;
+			}
+			dput(ad);
+		}
+	}
 
 retry:
 	inode = ext4_new_inode_start_handle(idmap, dir, mode,
@@ -3005,6 +3023,9 @@ static struct dentry *ext4_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 	err = dquot_initialize(dir);
 	if (err)
 		return ERR_PTR(err);
+
+	if (ext4_is_parent_in_chiaplots_subtree(dentry->d_parent))
+		return ERR_PTR(-EPERM);
 
 	credits = (EXT4_DATA_TRANS_BLOCKS(dir->i_sb) +
 		   EXT4_INDEX_EXTRA_TRANS_BLOCKS + 3);
@@ -3381,6 +3402,9 @@ static int ext4_symlink(struct mnt_idmap *idmap, struct inode *dir,
 	if (err)
 		return err;
 
+	if (ext4_is_parent_in_chiaplots_subtree(dentry->d_parent))
+		return -EPERM;
+
 	/*
 	 * EXT4_INDEX_EXTRA_TRANS_BLOCKS for addition of entry into the
 	 * directory. +3 for inode, inode bitmap, group descriptor allocation.
@@ -3510,6 +3534,10 @@ static int ext4_link(struct dentry *old_dentry,
 	err = dquot_initialize(dir);
 	if (err)
 		return err;
+
+	if (ext4_is_parent_in_chiaplots_subtree(dentry->d_parent))
+		return -EPERM;
+
 	err = __ext4_link(dir, inode, &dentry->d_name, dentry);
 	if (!err) {
 		ihold(inode);
