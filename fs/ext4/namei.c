@@ -2821,7 +2821,8 @@ static int ext4_create(struct mnt_idmap *idmap, struct inode *dir,
 	if (err)
 		return err;
 
-	if (ext4_is_parent_in_chiaplots_subtree(dentry->d_parent))
+	if (!(EXT4_SB(dir->i_sb)->s_mount_state & EXT4_FC_REPLAY) &&
+	    ext4_is_parent_in_chiaplots_subtree(dentry->d_parent))
 		return -EPERM;
 
 	credits = (EXT4_DATA_TRANS_BLOCKS(dir->i_sb) +
@@ -2859,7 +2860,8 @@ static int ext4_mknod(struct mnt_idmap *idmap, struct inode *dir,
 	if (err)
 		return err;
 
-	if (ext4_is_parent_in_chiaplots_subtree(dentry->d_parent))
+	if (!(EXT4_SB(dir->i_sb)->s_mount_state & EXT4_FC_REPLAY) &&
+	    ext4_is_parent_in_chiaplots_subtree(dentry->d_parent))
 		return -EPERM;
 
 	credits = (EXT4_DATA_TRANS_BLOCKS(dir->i_sb) +
@@ -2900,7 +2902,9 @@ static int ext4_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
 		struct dentry *ad = d_find_any_alias(dir);
 
 		if (ad) {
-			if (ext4_is_parent_in_chiaplots_subtree(ad)) {
+			if (!(EXT4_SB(dir->i_sb)->s_mount_state &
+			      EXT4_FC_REPLAY) &&
+			    ext4_is_parent_in_chiaplots_subtree(ad)) {
 				dput(ad);
 				return -EPERM;
 			}
@@ -3024,7 +3028,8 @@ static struct dentry *ext4_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 	if (err)
 		return ERR_PTR(err);
 
-	if (ext4_is_parent_in_chiaplots_subtree(dentry->d_parent))
+	if (!(EXT4_SB(dir->i_sb)->s_mount_state & EXT4_FC_REPLAY) &&
+	    ext4_is_parent_in_chiaplots_subtree(dentry->d_parent))
 		return ERR_PTR(-EPERM);
 
 	credits = (EXT4_DATA_TRANS_BLOCKS(dir->i_sb) +
@@ -3402,7 +3407,8 @@ static int ext4_symlink(struct mnt_idmap *idmap, struct inode *dir,
 	if (err)
 		return err;
 
-	if (ext4_is_parent_in_chiaplots_subtree(dentry->d_parent))
+	if (!(EXT4_SB(dir->i_sb)->s_mount_state & EXT4_FC_REPLAY) &&
+	    ext4_is_parent_in_chiaplots_subtree(dentry->d_parent))
 		return -EPERM;
 
 	/*
@@ -3535,7 +3541,8 @@ static int ext4_link(struct dentry *old_dentry,
 	if (err)
 		return err;
 
-	if (ext4_is_parent_in_chiaplots_subtree(dentry->d_parent))
+	if (!(EXT4_SB(dir->i_sb)->s_mount_state & EXT4_FC_REPLAY) &&
+	    ext4_is_parent_in_chiaplots_subtree(dentry->d_parent))
 		return -EPERM;
 
 	err = __ext4_link(dir, inode, &dentry->d_name, dentry);
