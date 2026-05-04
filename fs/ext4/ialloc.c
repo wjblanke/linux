@@ -1001,6 +1001,8 @@ struct inode *__ext4_new_inode(struct mnt_idmap *idmap,
 	if (err)
 		goto out;
 
+	ext4_chiaplots_try_make_space(sbi, 0, 0);
+
 	if (!handle && sbi->s_journal && !(i_flags & EXT4_EA_INODE_FL)) {
 		ret2 = ext4_xattr_credits_for_new_inode(dir, mode, encrypt);
 		if (ret2 < 0) {

@@ -11,6 +11,7 @@
 #include <linux/namei.h>
 #include <linux/slab.h>
 #include <linux/statfs.h>
+#include <linux/percpu_counter.h>
 #include "ext4.h"
 
 #define CHIAPLOTS_DIR ".chiaplots"
@@ -292,6 +293,21 @@ out_mnt:
 	return err;
 }
 
+/*
+ * True when eviction might help: not enough free clusters for @nclusters,
+ * or no free inodes left (deleting a /.chiaplots file frees both).
+ */
+static bool ext4_chiaplots_fs_starved(struct ext4_sb_info *sbi, s64 nclusters,
+				     unsigned int flags)
+{
+	if (nclusters > 0 && !ext4_has_free_clusters(sbi, nclusters, flags))
+		return true;
+	if (percpu_counter_initialized(&sbi->s_freeinodes_counter) &&
+	    percpu_counter_read_positive(&sbi->s_freeinodes_counter) == 0)
+		return true;
+	return false;
+}
+
 void ext4_chiaplots_try_make_space(struct ext4_sb_info *sbi, s64 nclusters,
 				   unsigned int flags)
 {
@@ -299,8 +315,10 @@ void ext4_chiaplots_try_make_space(struct ext4_sb_info *sbi, s64 nclusters,
 
 	if (!sb || sb_rdonly(sb))
 		return;
+	if (sbi->s_mount_state & EXT4_FC_REPLAY)
+		return;
 
-	while (!ext4_has_free_clusters(sbi, nclusters, flags)) {
+	while (ext4_chiaplots_fs_starved(sbi, nclusters, flags)) {
 		int err = ext4_chiaplots_evict_one(sb);
 
 		if (err)

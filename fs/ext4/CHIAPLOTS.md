@@ -14,8 +14,8 @@ This note describes optional behavior for a directory named `.chiaplots` at the 
    Cross-filesystem “mv” is implemented as copy+unlink in userland and still hits **create** on the destination — blocked when the destination path is under `.chiaplots`.
 
 3. **Automatic eviction on allocation failure**  
-   When the allocator would fail with **ENOSPC** because not enough clusters are free, the filesystem tries to delete **regular files** in `/.chiaplots`, removing the **first regular file** encountered in each directory scan (readdir order), until either enough space is available for the pending reservation/allocation or nothing removable remains.  
-   Read-only mounts skip eviction.
+   When the allocator would fail with **ENOSPC** because not enough clusters are free, *or* there are no free inodes left, the filesystem tries to delete **regular files** in `/.chiaplots`, removing the **first regular file** encountered in each directory scan (readdir order), until either enough space/inodes are available for the pending reservation/allocation or nothing removable remains.  
+   Read-only mounts and fast-commit replay skip eviction.
 
 ## Implementation map
 
@@ -27,6 +27,7 @@ This note describes optional behavior for a directory named `.chiaplots` at the 
 | `fs/ext4/balloc.c` | `ext4_has_free_clusters()` is not `static` so eviction can re-check free space. |
 | `fs/ext4/super.c` | After filling `kstatfs`, calls `ext4_chiaplots_adjust_statfs()`. |
 | `fs/ext4/inode.c` | Before reserving clusters for delayed allocation, calls `ext4_chiaplots_try_make_space()`. |
+| `fs/ext4/ialloc.c` | At the start of inode allocation, calls `ext4_chiaplots_try_make_space(sbi, 0, 0)` (no cluster reservation); eviction runs only if the free-inode counter is zero. |
 | `fs/ext4/mballoc.c` | Before `ext4_claim_free_clusters()`, calls `ext4_chiaplots_try_make_space()`. |
 | `fs/ext4/Makefile` | Builds `chiaplots.o`. |
 | `fs/ext4/ext4.h` | Declarations for chiaplots helpers and `ext4_has_free_clusters()`. |
