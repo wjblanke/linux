@@ -30,7 +30,7 @@ This note describes optional behavior for a directory named `.chiaplots` at the 
 | `fs/ext4/balloc.c` | `ext4_has_free_clusters()` is not `static` so eviction can re-check free space. |
 | `fs/ext4/super.c` | After filling `kstatfs`, calls `ext4_chiaplots_adjust_statfs()`. |
 | `fs/ext4/inode.c` | Runs `ext4_chiaplots_try_make_space()` **before** `dquot_reserve_block()` for delayed allocation. |
-| `fs/ext4/ialloc.c` | At the start of inode allocation, calls `ext4_chiaplots_try_make_space(sbi, 0, 0)` (no cluster reservation); eviction runs only if the free-inode counter is zero. |
+| `fs/ext4/ialloc.c` | At the start of inode allocation, calls `ext4_chiaplots_try_make_space(sbi, 1, 0)` so low cluster pressure can trigger eviction before inode-group placement heuristics fail. |
 | `fs/ext4/mballoc.c` | Before `ext4_claim_free_clusters()`, calls `ext4_chiaplots_try_make_space()`; `ext4_chiaplots_force_evict()` on quota failure and when the regular allocator returns no space despite reservation. |
 | `fs/ext4/Makefile` | Builds `chiaplots.o`. |
 | `fs/ext4/ext4.h` | Declarations for chiaplots helpers and `ext4_has_free_clusters()`. |
