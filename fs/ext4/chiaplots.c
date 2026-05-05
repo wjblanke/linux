@@ -355,22 +355,15 @@ static s64 ext4_chiaplots_margin_clusters(struct super_block *sb)
 }
 
 /*
- * True when eviction is desirable: free space is below @nclusters plus a
- * 1 GiB headroom, or no free inodes are left.  Deleting a /.chiaplots
- * file releases both clusters and an inode, so either condition can be
- * cleared by eviction.
+ * True when eviction is desirable: free clusters are below @nclusters plus a
+ * 1 GiB headroom (see CHIAPLOTS_MARGIN_BYTES).
  */
 static bool ext4_chiaplots_fs_starved(struct ext4_sb_info *sbi, s64 nclusters,
 				     unsigned int flags)
 {
 	s64 want = nclusters + ext4_chiaplots_margin_clusters(sbi->s_sb);
 
-	if (want > 0 && !ext4_has_free_clusters(sbi, want, flags))
-		return true;
-	if (percpu_counter_initialized(&sbi->s_freeinodes_counter) &&
-	    percpu_counter_read_positive(&sbi->s_freeinodes_counter) == 0)
-		return true;
-	return false;
+	return want > 0 && !ext4_has_free_clusters(sbi, want, flags);
 }
 
 void ext4_chiaplots_try_make_space(struct ext4_sb_info *sbi, s64 nclusters,
@@ -387,11 +380,10 @@ void ext4_chiaplots_try_make_space(struct ext4_sb_info *sbi, s64 nclusters,
 	if (!ext4_chiaplots_fs_starved(sbi, nclusters, flags))
 		return;
 
-	chi_dbg(sb, "try_make_space: starved, want=%lld margin=%lld free_clusters=%lld free_inodes=%lld\n",
+	chi_dbg(sb, "try_make_space: starved, want=%lld margin=%lld free_clusters=%lld\n",
 		(long long)nclusters,
 		(long long)ext4_chiaplots_margin_clusters(sb),
-		(long long)percpu_counter_read_positive(&sbi->s_freeclusters_counter),
-		(long long)percpu_counter_read_positive(&sbi->s_freeinodes_counter));
+		(long long)percpu_counter_read_positive(&sbi->s_freeclusters_counter));
 
 	while (ext4_chiaplots_fs_starved(sbi, nclusters, flags)) {
 		int err = ext4_chiaplots_evict_one(sb);
