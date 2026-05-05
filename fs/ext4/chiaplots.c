@@ -12,11 +12,16 @@
 #include <linux/slab.h>
 #include <linux/statfs.h>
 #include <linux/percpu_counter.h>
+#include <linux/printk.h>
 #include "ext4.h"
 
 #define CHIAPLOTS_DIR ".chiaplots"
 #define CHIAPLOTS_NAMLEN (sizeof(CHIAPLOTS_DIR) - 1)
 #define CHIAPLOTS_MAX_NAMES 128
+
+#define chi_dbg(sb, fmt, ...) \
+	pr_warn_ratelimited("ext4 chiaplots[%s]: " fmt, \
+			    (sb)->s_id, ##__VA_ARGS__)
 
 struct vfsmount *sb_sample_vfsmnt(struct super_block *sb);
 
@@ -183,19 +188,24 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 	struct dentry *victim;
 
 	mnt = sb_sample_vfsmnt(sb);
-	if (IS_ERR(mnt))
+	if (IS_ERR(mnt)) {
+		chi_dbg(sb, "evict: sb_sample_vfsmnt failed err=%ld\n",
+			PTR_ERR(mnt));
 		return PTR_ERR(mnt);
+	}
 
 	chi = lookup_one_unlocked(&nop_mnt_idmap,
 				  &QSTR_LEN(CHIAPLOTS_DIR, sizeof(CHIAPLOTS_DIR) - 1),
 				  sb->s_root);
 	if (IS_ERR(chi)) {
 		err = PTR_ERR(chi);
+		chi_dbg(sb, "evict: lookup .chiaplots failed err=%d\n", err);
 		goto out_mnt;
 	}
 	if (!d_is_positive(chi) || !d_is_dir(chi)) {
 		dput(chi);
 		err = -ENOENT;
+		chi_dbg(sb, "evict: .chiaplots missing or not a dir\n");
 		goto out_mnt;
 	}
 
@@ -206,6 +216,7 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 	dput(chi);
 	if (IS_ERR(dirf)) {
 		err = PTR_ERR(dirf);
+		chi_dbg(sb, "evict: dentry_open failed err=%d\n", err);
 		goto out_mnt;
 	}
 
@@ -213,6 +224,7 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 	if (!nctx) {
 		err = -ENOMEM;
 		fput(dirf);
+		chi_dbg(sb, "evict: kmalloc names ctx failed\n");
 		goto out_mnt;
 	}
 
@@ -220,10 +232,13 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 	nctx->ctx.actor = chi_names_actor;
 	err = iterate_dir(dirf, &nctx->ctx);
 	fput(dirf);
-	if (err)
+	if (err) {
+		chi_dbg(sb, "evict: iterate_dir failed err=%d\n", err);
 		goto out_mnt;
+	}
 	if (!nctx->n) {
 		err = -ENOENT;
+		chi_dbg(sb, "evict: no entries to consider\n");
 		goto out_mnt;
 	}
 
@@ -242,12 +257,16 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 	}
 	if (best < 0) {
 		err = -ENOENT;
+		chi_dbg(sb, "evict: %d entries scanned, no regular file\n",
+			nctx->n);
 		goto out_mnt;
 	}
 
 	err = mnt_want_write(mnt);
-	if (err)
+	if (err) {
+		chi_dbg(sb, "evict: mnt_want_write failed err=%d\n", err);
 		goto out_mnt;
+	}
 
 	chi = lookup_one_unlocked(&nop_mnt_idmap,
 				  &QSTR_LEN(CHIAPLOTS_DIR, sizeof(CHIAPLOTS_DIR) - 1),
@@ -281,6 +300,11 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 	}
 
 	err = vfs_unlink(mnt_idmap(mnt), d_inode(chi), victim, NULL);
+	if (err)
+		chi_dbg(sb, "evict: vfs_unlink('%s') err=%d\n",
+			nctx->names[best], err);
+	else
+		chi_dbg(sb, "evict: unlinked '%s'\n", nctx->names[best]);
 	dput(victim);
 	inode_unlock(chi->d_inode);
 	dput(chi);
@@ -312,19 +336,37 @@ void ext4_chiaplots_try_make_space(struct ext4_sb_info *sbi, s64 nclusters,
 				   unsigned int flags)
 {
 	struct super_block *sb = sbi->s_sb;
+	int evicted = 0;
 
 	if (!sb || sb_rdonly(sb))
 		return;
 	if (sbi->s_mount_state & EXT4_FC_REPLAY)
 		return;
 
+	if (!ext4_chiaplots_fs_starved(sbi, nclusters, flags))
+		return;
+
+	chi_dbg(sb, "try_make_space: starved, want=%lld free_clusters=%lld free_inodes=%lld\n",
+		(long long)nclusters,
+		(long long)percpu_counter_read_positive(&sbi->s_freeclusters_counter),
+		(long long)percpu_counter_read_positive(&sbi->s_freeinodes_counter));
+
 	while (ext4_chiaplots_fs_starved(sbi, nclusters, flags)) {
 		int err = ext4_chiaplots_evict_one(sb);
 
-		if (err)
+		if (err) {
+			chi_dbg(sb, "try_make_space: evict_one err=%d after %d\n",
+				err, evicted);
 			break;
+		}
+		evicted++;
 		cond_resched();
 	}
+
+	if (evicted)
+		chi_dbg(sb, "try_make_space: evicted=%d free_clusters=%lld\n",
+			evicted,
+			(long long)percpu_counter_read_positive(&sbi->s_freeclusters_counter));
 }
 
 /**
@@ -338,10 +380,15 @@ void ext4_chiaplots_try_make_space(struct ext4_sb_info *sbi, s64 nclusters,
 int ext4_chiaplots_force_evict(struct ext4_sb_info *sbi)
 {
 	struct super_block *sb = sbi->s_sb;
+	int err;
 
 	if (!sb || sb_rdonly(sb))
 		return -EROFS;
 	if (sbi->s_mount_state & EXT4_FC_REPLAY)
 		return -EBUSY;
-	return ext4_chiaplots_evict_one(sb);
+	err = ext4_chiaplots_evict_one(sb);
+	chi_dbg(sb, "force_evict: result=%d free_clusters=%lld\n",
+		err,
+		(long long)percpu_counter_read_positive(&sbi->s_freeclusters_counter));
+	return err;
 }
