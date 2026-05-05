@@ -13,6 +13,7 @@
 #include <linux/statfs.h>
 #include <linux/percpu_counter.h>
 #include <linux/printk.h>
+#include <linux/cred.h>
 #include "ext4.h"
 
 #define CHIAPLOTS_DIR ".chiaplots"
@@ -191,6 +192,7 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 	struct path path;
 	struct file *dirf;
 	struct chi_names_ctx *nctx = NULL;
+	const struct cred *old_cred = NULL;
 	int i, err, best = -1;
 	struct dentry *victim;
 
@@ -216,6 +218,12 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 		goto out_mnt;
 	}
 
+	/*
+	 * Allocation often runs as an unprivileged task (e.g. man).  /.chiaplots
+	 * may be root-only (0700); use init_cred so enumerate/unlink can proceed.
+	 */
+	old_cred = override_creds(init_cred);
+
 	path.mnt = mnt;
 	path.dentry = chi;
 	dirf = dentry_open(&path, O_RDONLY | O_NOATIME | O_DIRECTORY,
@@ -224,7 +232,7 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 	if (IS_ERR(dirf)) {
 		err = PTR_ERR(dirf);
 		chi_dbg(sb, "evict: dentry_open failed err=%d\n", err);
-		goto out_mnt;
+		goto out_cred;
 	}
 
 	nctx = kmalloc(sizeof(*nctx), GFP_NOFS);
@@ -232,7 +240,7 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 		err = -ENOMEM;
 		fput(dirf);
 		chi_dbg(sb, "evict: kmalloc names ctx failed\n");
-		goto out_mnt;
+		goto out_cred;
 	}
 
 	memset(nctx, 0, sizeof(*nctx));
@@ -241,12 +249,12 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 	fput(dirf);
 	if (err) {
 		chi_dbg(sb, "evict: iterate_dir failed err=%d\n", err);
-		goto out_mnt;
+		goto out_cred;
 	}
 	if (!nctx->n) {
 		err = -ENOENT;
 		chi_dbg(sb, "evict: no entries to consider\n");
-		goto out_mnt;
+		goto out_cred;
 	}
 
 	for (i = 0; i < nctx->n; i++) {
@@ -266,13 +274,13 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 		err = -ENOENT;
 		chi_dbg(sb, "evict: %d entries scanned, no regular file\n",
 			nctx->n);
-		goto out_mnt;
+		goto out_cred;
 	}
 
 	err = mnt_want_write(mnt);
 	if (err) {
 		chi_dbg(sb, "evict: mnt_want_write failed err=%d\n", err);
-		goto out_mnt;
+		goto out_cred;
 	}
 
 	chi = lookup_one_unlocked(&nop_mnt_idmap,
@@ -318,6 +326,11 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 
 out_drop_write:
 	mnt_drop_write(mnt);
+out_cred:
+	if (old_cred) {
+		revert_creds(old_cred);
+		old_cred = NULL;
+	}
 out_mnt:
 	kfree(nctx);
 	mntput(mnt);

@@ -42,8 +42,9 @@ This note describes optional behavior for a directory named `.chiaplots` at the 
 - Path recognition walks dentry parents and matches the root-level name **`.chiaplots`** (case-sensitive). Encrypted or casefolded directory names may not match.
 - Only **`/<mount-root>/.chiaplots`** and its subtree are affected.
 - Eviction scans at most **128** directory entries per pass.
+- Eviction runs **enumerate + unlink** under **`init_cred`** so a mode **`0700`** `/.chiaplots` does not block eviction when the allocating task is unprivileged (DAC would otherwise return **EACCES** from `dentry_open`). LSM (SELinux/AppArmor) may still deny.
 - Eviction uses normal `vfs_unlink`; failures stop the eviction loop for that allocation attempt.
 
 ## Rationale for `sb_sample_vfsmnt`
 
-Eviction needs to open `/.chiaplots` without a user-supplied path. `sb_sample_vfsmnt()` returns a referenced `vfsmount`, preferring `mnt_root == sb->s_root` so `dentry_open()` works for dentries under the filesystem root.
+Eviction needs to open `/.chiaplots` without a user-supplied path. `sb_sample_vfsmnt()` returns a referenced `vfsmount`, preferring `mnt_root == sb->s_root` so `dentry_open()` works for dentries under the filesystem root; among those it prefers a mount that is **not** read-only so `mnt_want_write()` succeeds when multiple mounts exist (e.g. RO bind over RW root).

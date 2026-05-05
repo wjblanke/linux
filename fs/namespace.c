@@ -839,6 +839,20 @@ struct vfsmount *sb_sample_vfsmnt(struct super_block *sb)
 	 * that case mnt_root != sb->s_root and dentries under sb->s_root are
 	 * not reachable from that mount for dentry_open(path).
 	 */
+	/*
+	 * Prefer mnt_root == sb->s_root for dentry_open from sb->s_root dentries.
+	 * Among those, skip read-only mounts first (common: bind-mount root RO while
+	 * the primary mount is RW); eviction / helpers need mnt_want_write().
+	 */
+	for (m = sb->s_mounts; m; m = m->mnt_next_for_sb) {
+		if (m->mnt.mnt_root != sb->s_root)
+			continue;
+		if (__mnt_is_readonly(&m->mnt))
+			continue;
+		ret = &m->mnt;
+		mntget(ret);
+		return ret;
+	}
 	for (m = sb->s_mounts; m; m = m->mnt_next_for_sb) {
 		if (m->mnt.mnt_root != sb->s_root)
 			continue;
