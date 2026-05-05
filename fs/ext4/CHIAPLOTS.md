@@ -13,12 +13,14 @@ This note describes optional behavior for a directory named `.chiaplots` at the 
    **`rename`** (same-filesystem `mv`) is unchanged: existing inodes can be moved into or within `.chiaplots` without creating a new inode.  
    Cross-filesystem “mv” is implemented as copy+unlink in userland and still hits **create** on the destination — blocked when the destination path is under `.chiaplots`.
 
-3. **Automatic eviction on allocation failure**  
-   When the allocator would fail with **ENOSPC** because not enough clusters are free, *or* there are no free inodes left, the filesystem tries to delete **regular files** in `/.chiaplots`, removing the **first regular file** encountered in each directory scan (readdir order), until either enough space/inodes are available for the pending reservation/allocation or nothing removable remains.  
+3. **Proactive eviction with a 1 GiB headroom**  
+   Eviction does **not** wait for ENOSPC. On every allocation hook the filesystem checks whether free clusters fall below the request **plus a 1 GiB margin** (`CHIAPLOTS_MARGIN_BYTES` in `fs/ext4/chiaplots.c`). When they do, regular files in `/.chiaplots` are unlinked **first regular file in readdir order**, repeating until the headroom is restored or nothing removable remains. The same path also fires when the free-inode counter hits zero.  
    Delayed allocation reserves quota **after** this eviction so deleting plot files can satisfy `dquot_reserve_block` for the same user.  
-   If **mballoc** still cannot place blocks while counters show free space (fragmentation), up to three **forced** evictions (ignoring the global “starved” check) run before final **ENOSPC**.  
+   If **mballoc** still cannot place blocks while counters show free space (fragmentation), up to three **forced** evictions (one file each, ignoring the headroom check) run before final **ENOSPC**.  
    **EDQUOT** after cluster reservation retries up to three forced evictions before failing.  
    Read-only mounts and fast-commit replay skip eviction.
+
+   To change the headroom edit `CHIAPLOTS_MARGIN_BYTES` and rebuild; setting it to `0` reverts to the previous “evict only on real ENOSPC” behaviour.
 
 ## Implementation map
 
