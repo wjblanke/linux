@@ -1,49 +1,88 @@
 # Root `.chiaplots` handling (ext4)
 
-This note describes optional behavior for a directory named `.chiaplots` at the **filesystem root** (the root inode’s child `.chiaplots`, not deeper paths).
+Optional behavior for a directory named **`.chiaplots`** at the **filesystem root** (child of the mount root inode). Deeper paths named `.chiaplots` are **not** treated specially.
+
+---
+
+## Changes since upstream (fork summary)
+
+| Topic | Behavior |
+|-------|----------|
+| **statfs** | After filling `struct kstatfs`, **`ext4_chiaplots_adjust_statfs()`** adds blocks used by **regular files** directly in **`/.chiaplots`** back into **`f_bfree`** / **`f_bavail`** (capped at **`f_blocks`**). Blocks stay allocated on disk; only reporting changes. |
+| **Creates under `.chiaplots`** | **`ext4_create`**, **`mknod`**, **`mkdir`**, **`symlink`**, **`link`**, **`tmpfile`** return **`-EPERM`** when the new name would live under **`/.chiaplots`**. **`rename`** is **not** blocked. **`EXT4_FC_REPLAY`**: EPERM checks skipped so fast-commit replay can recreate entries. |
+| **Eviction** | **`ext4_chiaplots_try_make_space()`** runs when free clusters (accounting for dirty/reserved pools) fall below **`requested clusters + margin`**, with **`CHIAPLOTS_MARGIN_BYTES`** default **1 GiB**. Deletes the **first regular file** in **readdir order** under **`/.chiaplots`**, repeating while starved. Hooks: delayed-allocation reserve (**before** quota reserve), **`ext4_mb_new_blocks`** (non–delalloc-reserved path). **`ext4_chiaplots_force_evict()`**: single-file eviction without the starved check—used on **EDQUOT** retry and when the regular allocator still fails (**up to 3** attempts each). No separate **free-inode counter** eviction hook (**`ialloc.c`** does not call chiaplots). |
+| **Credentials / DAC** | Eviction uses **`override_creds(kernel_cred())`** for **`dentry_open`** / **`vfs_unlink`** so a mode **`0700`** **`/.chiaplots`** does not fail with **EACCES** when the allocating task is unprivileged. LSM may still deny. |
+| **Mount choice** | **`sb_sample_vfsmnt()`** in **`fs/namespace.c`** (exported): picks a **`vfsmount`** for **`dentry_open`** / **`mnt_want_write`**. Prefers **`mnt_root == sb->s_root`**, and among those prefers a **read-write** mount before falling back to read-only (helps **RO bind** over **RW** root). **`chiaplots.c`** calls this helper; it does **not** duplicate mount walking. |
+| **Diagnostics** | **`pr_warn_ratelimited("ext4 chiaplots[%s]: …")`** around eviction / **`try_make_space`** / **`force_evict`**. Use **`dmesg`** / **`journalctl -k`** (grep **`chiaplots`**). |
+| **Userland helper** | Repo root **`makeplots.sh`**: fills **`./plots`** with fixed-size files until ENOSPC, then **`mv`** into **`/.chiaplots`**—does **not** **`mkdir`** the destination; it must already exist. |
+
+---
 
 ## Overview
 
-1. **statfs / free-space reporting**  
-   Disk blocks used by **regular files** directly inside `/.chiaplots` are added back into the reported free block counts (`f_bfree`, `f_bavail`), capped so totals never exceed `f_blocks`.  
-   Physically those blocks remain allocated; this only affects what `statfs()` (and thus tools like `df`) report.
+### 1. statfs / free-space reporting
 
-2. **No new entries via “copy” APIs**  
-   Creating a **new** name inside `/.chiaplots` or any subdirectory (`create`, `mkdir`, `mknod`, `symlink`, `link`, `tmpfile`) returns **-EPERM**.  
-   **`rename`** (same-filesystem `mv`) is unchanged: existing inodes can be moved into or within `.chiaplots` without creating a new inode.  
-   Cross-filesystem “mv” is implemented as copy+unlink in userland and still hits **create** on the destination — blocked when the destination path is under `.chiaplots`.
+Disk blocks used by **regular files** directly inside **`/.chiaplots`** are added back into **`f_bfree`** and **`f_bavail`** (recalculated after reserved blocks), capped so totals never exceed **`f_blocks`**.
 
-3. **Proactive eviction with a 1 GiB headroom**  
-   Eviction does **not** wait for ENOSPC. On every allocation hook the filesystem checks whether free clusters fall below the request **plus a 1 GiB margin** (`CHIAPLOTS_MARGIN_BYTES` in `fs/ext4/chiaplots.c`). When they do, regular files in `/.chiaplots` are unlinked **first regular file in readdir order**, repeating until the headroom is restored or nothing removable remains.  
-   Delayed allocation reserves quota **after** this eviction so deleting plot files can satisfy `dquot_reserve_block` for the same user.  
-   If **mballoc** still cannot place blocks while counters show free space (fragmentation), up to three **forced** evictions (one file each, ignoring the headroom check) run before final **ENOSPC**.  
-   **EDQUOT** after cluster reservation retries up to three forced evictions before failing.  
-   Read-only mounts and fast-commit replay skip eviction.
+On Linux there is no separate **`statvfs`** syscall: libc builds **`struct statvfs`** from **`statfs`/`statfs64`**, so block counts match **`statfs`** for the same mount.
 
-   To change the headroom edit `CHIAPLOTS_MARGIN_BYTES` and rebuild; setting it to `0` reverts to the previous “evict only on real ENOSPC” behaviour.
+### 2. No new names via “copy” APIs
+
+Creating a **new** inode/name under **`/.chiaplots`** via **`create`**, **`mkdir`**, **`mknod`**, **`symlink`**, **`link`**, or **`tmpfile`** returns **`-EPERM`**. Same-filesystem **`mv`** (**`rename`**) is allowed. Cross-filesystem **`mv`** uses copy+unlink in userland and hits **create** on the destination—blocked when the destination path is under **`/.chiaplots`**.
+
+### 3. Proactive eviction (cluster headroom)
+
+Eviction is driven only by **free-cluster** accounting (plus margin), **not** by the global free-inode counter.
+
+- **`CHIAPLOTS_MARGIN_BYTES`** (default **1 GiB**) is converted to clusters; **`ext4_chiaplots_fs_starved()`** requires at least **`nclusters + margin_clusters`** free (via **`ext4_has_free_clusters()`**). The conversion enforces a **minimum of one cluster** of margin even if the macro were set to **`0`**.
+- **Delayed allocation**: **`ext4_chiaplots_try_make_space()`** runs **before** **`dquot_reserve_block()`** so unlink can free quota-relevant space for the same uid/proj before reservation.
+- **`ext4_mb_new_blocks`**: **`try_make_space`** before **`ext4_claim_free_clusters()`** when **`EXT4_MB_DELALLOC_RESERVED`** is clear; on **EDQUOT** after reservation, up to **3** **`force_evict`** + quota retry; on allocator failure, up to **3** **`force_evict`** + **`goto repeat`** before final **ENOSPC**.
+- Skipped when the superblock is read-only or **`EXT4_FC_REPLAY`** is set.
+
+To tune headroom, edit **`CHIAPLOTS_MARGIN_BYTES`** in **`fs/ext4/chiaplots.c`** and rebuild.
+
+---
 
 ## Implementation map
 
-| Area | Change |
-|------|--------|
-| `fs/ext4/chiaplots.c` | `ext4_is_parent_in_chiaplots_subtree()`, statfs adjustment, eviction, `ext4_chiaplots_sample_vfsmnt()`. |
-| `fs/ext4/namei.c` | Deny create-like operations under `.chiaplots` (`-EPERM`). |
-| `fs/ext4/balloc.c` | `ext4_has_free_clusters()` is not `static` so eviction can re-check free space. |
-| `fs/ext4/super.c` | After filling `kstatfs`, calls `ext4_chiaplots_adjust_statfs()`. |
-| `fs/ext4/inode.c` | Runs `ext4_chiaplots_try_make_space()` **before** `dquot_reserve_block()` for delayed allocation. |
-| `fs/ext4/mballoc.c` | Before `ext4_claim_free_clusters()`, calls `ext4_chiaplots_try_make_space()`; `ext4_chiaplots_force_evict()` on quota failure and when the regular allocator returns no space despite reservation. |
-| `fs/ext4/Makefile` | Builds `chiaplots.o`. |
-| `fs/ext4/ext4.h` | Declarations for chiaplots helpers and `ext4_has_free_clusters()`. |
+| File | Role |
+|------|------|
+| **`fs/namespace.c`** | **`sb_sample_vfsmnt(sb)`** — referenced **`vfsmount`** for **`/.chiaplots`** paths; prefers filesystem-root mount, then RW among those. |
+| **`fs/ext4/chiaplots.c`** | Path test, **`ext4_chiaplots_adjust_statfs`**, **`ext4_chiaplots_sum_fsblocks`**, **`ext4_chiaplots_try_make_space`**, **`ext4_chiaplots_force_evict`**, eviction (**`vfs_unlink`**), **`chi_dbg`** ratelimited warnings. |
+| **`fs/ext4/namei.c`** | EPERM guards + **`EXT4_FC_REPLAY`** bypass on create-like ops. |
+| **`fs/ext4/balloc.c`** | **`ext4_has_free_clusters()`** exported for chiaplots starvation checks. |
+| **`fs/ext4/super.c`** | **`ext4_statfs`** calls **`ext4_chiaplots_adjust_statfs()`** after filling **`kstatfs`**. |
+| **`fs/ext4/inode.c`** | **`ext4_da_reserve_space`**: **`try_make_space`** then **`dquot_reserve_block`**. |
+| **`fs/ext4/mballoc.c`** | **`try_make_space`** / **`force_evict`** integration in **`ext4_mb_new_blocks`**. |
+| **`fs/ext4/ext4.h`** | Declarations for chiaplots helpers and **`ext4_has_free_clusters()`**. |
+| **`fs/ext4/Makefile`** | **`chiaplots.o`**. |
+
+---
 
 ## Limits and semantics
 
-- Path recognition walks dentry parents and matches the root-level name **`.chiaplots`** (case-sensitive). Encrypted or casefolded directory names may not match.
+- Recognition walks dentry parents and matches the root-level name **`.chiaplots`** (**case-sensitive**). Casefold / encryption may prevent a match.
 - Only **`/<mount-root>/.chiaplots`** and its subtree are affected.
-- The kernel **never creates** `/.chiaplots`; create it once from userland if you want eviction/statfs adjustment (e.g. **`mkdir /.chiaplots`** as root—creating that name under the mount root is **not** covered by the **EPERM** rules, which only apply **inside** `/.chiaplots`).
-- Eviction scans at most **128** directory entries per pass.
-- Eviction runs **enumerate + unlink** under **`kernel_cred()`** (`init_task`’s subjective cred) so a mode **`0700`** `/.chiaplots` does not block eviction when the allocating task is unprivileged (DAC would otherwise return **EACCES** from `dentry_open`). LSM (SELinux/AppArmor) may still deny.
-- Eviction uses normal `vfs_unlink`; failures stop the eviction loop for that allocation attempt.
+- The kernel **never creates** **`/.chiaplots`**. Create it once in userland if you want eviction/statfs adjustment (e.g. **`mkdir /.chiaplots`** as root). Creating that directory as a child of the **mount root** is **not** blocked by the EPERM rules (those apply **inside** **`/.chiaplots`**).
+- Eviction collects at most **128** directory entries per scan pass (**`CHIAPLOTS_MAX_NAMES`**).
+- Eviction uses normal **`vfs_unlink`**; errors stop the loop for that allocation attempt.
+- **`/.chiaplots`** must live on the **same** mounted volume as the workload expecting eviction; otherwise freeing plots does not help writers on another mount.
 
-## Rationale for `ext4_chiaplots_sample_vfsmnt`
+---
 
-Eviction needs to open `/.chiaplots` without a user-supplied path. **`ext4_chiaplots_sample_vfsmnt()`** returns a referenced `vfsmount`, preferring `mnt_root == sb->s_root` so `dentry_open()` works for dentries under the filesystem root; among those it prefers a mount that is **not** read-only so `mnt_want_write()` succeeds when multiple mounts exist (e.g. RO bind over RW root).
+## Debugging
+
+Kernel warnings:
+
+```bash
+sudo dmesg --ctime | grep -i chiaplots
+# or: sudo journalctl -k -g chiaplots
+```
+
+Messages are **ratelimited**; bursts may be suppressed.
+
+---
+
+## Rationale for **`sb_sample_vfsmnt()`**
+
+Eviction and statfs summing need a **`vfsmount`** without a user path. **`sb_sample_vfsmnt()`** returns a referenced mount for **`sb`**, preferring **`mnt_root == sb->s_root`** so **`dentry_open`** on dentries under the filesystem root works; among those it prefers **read-write** mounts so **`mnt_want_write()`** succeeds when a read-only bind shadows a writable root mount.
