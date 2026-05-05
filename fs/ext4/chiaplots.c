@@ -326,3 +326,22 @@ void ext4_chiaplots_try_make_space(struct ext4_sb_info *sbi, s64 nclusters,
 		cond_resched();
 	}
 }
+
+/**
+ * Remove one regular file in /.chiaplots even when the global free-cluster
+ * counter is non-zero.  Block allocation can still fail (fragmentation,
+ * group layout); deleting a large plot can make a request succeed.  Quota
+ * pressure can also clear when the same user holds the plot data.
+ *
+ * Return: 0 if a file was unlinked, negative errno on skip or error.
+ */
+int ext4_chiaplots_force_evict(struct ext4_sb_info *sbi)
+{
+	struct super_block *sb = sbi->s_sb;
+
+	if (!sb || sb_rdonly(sb))
+		return -EROFS;
+	if (sbi->s_mount_state & EXT4_FC_REPLAY)
+		return -EBUSY;
+	return ext4_chiaplots_evict_one(sb);
+}

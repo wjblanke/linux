@@ -6236,6 +6236,8 @@ ext4_fsblk_t ext4_mb_new_blocks(handle_t *handle,
 	unsigned int inquota = 0;
 	unsigned int reserv_clstrs = 0;
 	int retries = 0;
+	int chi_forced = 0;
+	int chi_quota_try = 0;
 	u64 seq;
 
 	might_sleep();
@@ -6269,6 +6271,12 @@ ext4_fsblk_t ext4_mb_new_blocks(handle_t *handle,
 			return 0;
 		}
 		reserv_clstrs = ar->len;
+		{
+			const unsigned int saved_flags = ar->flags;
+
+quota_retry:
+			ar->len = reserv_clstrs;
+			ar->flags = saved_flags;
 		if (ar->flags & EXT4_MB_USE_ROOT_BLOCKS) {
 			dquot_alloc_block_nofail(ar->inode,
 						 EXT4_C2B(sbi, ar->len));
@@ -6283,8 +6291,14 @@ ext4_fsblk_t ext4_mb_new_blocks(handle_t *handle,
 		}
 		inquota = ar->len;
 		if (ar->len == 0) {
+			if (chi_quota_try < 3 &&
+			    ext4_chiaplots_force_evict(sbi) == 0) {
+				chi_quota_try++;
+				goto quota_retry;
+			}
 			*errp = -EDQUOT;
 			goto out;
+		}
 		}
 	}
 
@@ -6335,6 +6349,11 @@ repeat:
 			ar->len = ac->ac_b_ex.fe_len;
 		}
 	} else {
+		if (chi_forced < 3 &&
+		    ext4_chiaplots_force_evict(sbi) == 0) {
+			chi_forced++;
+			goto repeat;
+		}
 		if (++retries < 3 &&
 		    ext4_mb_discard_preallocations_should_retry(sb, ac, &seq))
 			goto repeat;

@@ -1631,12 +1631,14 @@ static int ext4_da_reserve_space(struct inode *inode, int nr_resv)
 	 * We will charge metadata quota at writeout time; this saves
 	 * us from metadata over-estimation, though we may go over by
 	 * a small amount in the end.  Here we just reserve for data.
+	 * Evict /.chiaplots files before quota reservation so unlink frees
+	 * blocks/inodes for this uid/proj before dquot_reserve_block runs.
 	 */
+	ext4_chiaplots_try_make_space(sbi, nr_resv, 0);
+
 	ret = dquot_reserve_block(inode, EXT4_C2B(sbi, nr_resv));
 	if (ret)
 		return ret;
-
-	ext4_chiaplots_try_make_space(sbi, nr_resv, 0);
 
 	spin_lock(&ei->i_block_reservation_lock);
 	if (ext4_claim_free_clusters(sbi, nr_resv, 0)) {
