@@ -220,9 +220,10 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 
 	/*
 	 * Allocation often runs as an unprivileged task (e.g. man).  /.chiaplots
-	 * may be root-only (0700); use init_cred so enumerate/unlink can proceed.
+	 * may be root-only (0700); use kernel (init_task) cred so enumerate/unlink
+	 * can proceed.  (There is no exported init_cred symbol; use kernel_cred().)
 	 */
-	old_cred = override_creds(init_cred);
+	old_cred = override_creds(kernel_cred());
 
 	path.mnt = mnt;
 	path.dentry = chi;
