@@ -15,14 +15,9 @@
 
 set -u
 
-STAGING_DIR="${1:-./plots}"
-CHIAPLOTS_DIR="${CHIAPLOTS:-/.chiaplots}"
-SIZE_MB="${SIZE_MB:-50}"
-
-if ! [[ "$SIZE_MB" =~ ^[0-9]+$ ]] || [[ "$SIZE_MB" -lt 1 ]]; then
-	echo "SIZE_MB must be a positive integer" >&2
-	exit 1
-fi
+STAGING_DIR="./plots"
+CHIAPLOTS_DIR="/.chiaplots"
+SIZE_MB="50"
 
 mkdir -p -- "$STAGING_DIR" || exit 1
 
