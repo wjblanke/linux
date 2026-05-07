@@ -91,7 +91,7 @@ Use this flow to build and boot a kernel from this fork (or any Linux GitHub tre
 
 ```bash
 sudo apt update
-sudo apt install git build-essential libncurses-dev bison flex libssl-dev libelf-dev
+sudo apt install git build-essential libncurses-dev bison flex libssl-dev libelf-dev libdw-dev
 ```
 
 ### 2. Clone source (if needed) and enter tree
