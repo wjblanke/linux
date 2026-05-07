@@ -83,6 +83,62 @@ Messages are **ratelimited**; bursts may be suppressed.
 
 ---
 
+## Build Linux from GitHub source
+
+Use this flow to build and boot a kernel from this fork (or any Linux GitHub tree).
+
+### 1. Install build dependencies (Debian/Ubuntu example)
+
+```bash
+sudo apt update
+sudo apt install git build-essential libncurses-dev bison flex libssl-dev libelf-dev
+```
+
+### 2. Clone source (if needed) and enter tree
+
+```bash
+git clone --depth 1 https://github.com/wjblanke/linux.git
+cd linux
+```
+
+### 3. Seed `.config`
+
+```bash
+cp /boot/config-$(uname -r) .config
+make olddefconfig
+scripts/config --set-str SYSTEM_TRUSTED_KEYS ""
+scripts/config --set-str SYSTEM_REVOCATION_KEYS ""
+```
+### 4. Build kernel and modules
+
+```bash
+make -j"$(nproc)"
+```
+
+### 5. Install modules and kernel
+
+```bash
+sudo make modules_install
+sudo make install
+```
+
+### 6. Create /.chiaplots folder
+
+```bash
+sudo mkdir /.chiaplots
+sudo chmod 777 /.chiaplots
+```
+
+### 7. Reboot and verify running kernel
+
+```bash
+uname -r
+```
+
+Confirm it matches the kernel you built before testing chiaplots behavior.
+
+---
+
 ## Rationale for **`sb_sample_vfsmnt()`**
 
 Eviction and statfs summing need a **`vfsmount`** without a user path. **`sb_sample_vfsmnt()`** returns a referenced mount for **`sb`**, preferring **`mnt_root == sb->s_root`** so **`dentry_open`** on dentries under the filesystem root works; among those it prefers **read-write** mounts so **`mnt_want_write()`** succeeds when a read-only bind shadows a writable root mount.
