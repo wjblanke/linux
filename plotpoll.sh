@@ -12,6 +12,11 @@
 #   THRESHOLD_MB    default 1100  (mebibytes: threshold * 1024*1024 bytes)
 #   FILE_MB         default 50    (mebibytes per new file)
 
+# Invoked as `sh plotpoll.sh` or from a non-bash sh: re-exec so [[, ((, local work.
+if [ -z "${BASH_VERSION:-}" ]; then
+	exec /usr/bin/env bash "$0" "$@" || exit 1
+fi
+
 set -u
 
 CHIAPLOTS_DIR="${CHIAPLOTS_DIR:-/.chiaplots}"
