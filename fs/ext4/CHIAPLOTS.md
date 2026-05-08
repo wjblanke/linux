@@ -131,11 +131,11 @@ Repository root **`plotpoll.sh`** is a **bash** loop for exercising chiaplots fr
 
 **Behavior (defaults):**
 
-- Every **`INTERVAL_SEC`** seconds (default **1**), if **`CHIAPLOTS_DIR`** exists (default **`/.chiaplots`**) and is writable:
+- When no room to create another file, sleep **`INTERVAL_SEC`** seconds (default **10**); while room exists, it immediately attempts another create. If **`CHIAPLOTS_DIR`** exists (default **`/.chiaplots`**) and is writable:
   - **`df -B1`** on that path → available bytes on the mount.
   - **`find`** sums byte sizes of **all regular files** under **`CHIAPLOTS_DIR`** (any depth).
   - **Metric** = `df_avail - plot_bytes` (same definition as **`makeplots.sh`**).
-  - If **metric > `THRESHOLD_MB` × 1024²** bytes (default **`THRESHOLD_MB=1100`** → **1100 MiB**), allocates **`FILE_MB`** MiB (default **50**) with **`dd`** into **`mktemp /tmp/plotpoll.XXXXXX`**, then **`mv`** to **`CHIAPLOTS_DIR/auto_<epoch>_<pid>.bin`**. Logs successes and **`dd`/`mv`** failures to stderr (**`plotpoll:`** prefix).
+  - If **metric > `THRESHOLD_MB` × 1024²** bytes (default **`THRESHOLD_MB=1100`** → **1100 MiB**), allocates **`FILE_MB`** MiB (default **50**) with **`dd`** into **`mktemp /tmp/plotpoll.XXXXXX`**, then **`mv`** to **`CHIAPLOTS_DIR/auto_<epoch>_<pid>.bin`**. Successful creates print a timestamped `plotpoll:` line; **`dd`/`mv`** failures go to stderr.
 
 **Environment overrides:** `CHIAPLOTS_DIR`, `INTERVAL_SEC`, `THRESHOLD_MB`, `FILE_MB` (see script header).
 
