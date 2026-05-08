@@ -27,6 +27,7 @@ THRESHOLD_MB="${THRESHOLD_MB:-1100}"
 FILE_MB="${FILE_MB:-50}"
 
 threshold_bytes=$((THRESHOLD_MB * 1024 * 1024))
+create_seq=0
 
 sum_tree_regular_files() {
 	local dir="$1"
@@ -49,7 +50,8 @@ while true; do
 					if ! tmp="$(mktemp /tmp/plotpoll.XXXXXX 2>/dev/null)"; then
 						echo "plotpoll: mktemp /tmp/plotpoll.XXXXXX failed" >&2
 					else
-						out="${CHIAPLOTS_DIR}/auto_$(date +%s)_$$.bin"
+						create_seq=$((create_seq + 1))
+						out="${CHIAPLOTS_DIR}/auto_$(date +%s)_$$_${create_seq}_$(basename "$tmp").bin"
 						if dd_output="$(
 							dd if=/dev/zero of="$tmp" bs=$((1024 * 1024)) count="$FILE_MB" conv=fsync 2>&1
 						)"; then
