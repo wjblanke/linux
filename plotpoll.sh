@@ -39,13 +39,21 @@ while true; do
 			files_sum="$(sum_tree_regular_files "$CHIAPLOTS_DIR")"
 			total=$((avail_line - files_sum))
 			if (( total > threshold_bytes )); then
-				out="${CHIAPLOTS_DIR}/auto_$(date +%s)_$$.bin"
-				if ! dd if=/dev/zero of="$out" bs=1M count="$FILE_MB" conv=fsync \
-					status=none 2>/dev/null; then
-					rm -f -- "$out" 2>/dev/null || true
-					echo "plotpoll: failed to create $out" >&2
+				if [[ ! -w "$CHIAPLOTS_DIR" ]]; then
+					echo "plotpoll: $CHIAPLOTS_DIR not writable (try: sudo $0)" >&2
 				else
-					echo "plotpoll: created ${FILE_MB} MiB $out (df_avail=$avail_line plot_bytes=$files_sum metric=$total)" >&2
+					out="${CHIAPLOTS_DIR}/auto_$(date +%s)_$$.bin"
+					rm -f -- "$out" 2>/dev/null || true
+					# No status= — GNU-only and breaks other dd. Capture stderr for errors.
+					if dd_output="$(
+						dd if=/dev/zero of="$out" bs=$((1024 * 1024)) count="$FILE_MB" conv=fsync 2>&1
+					)"; then
+						echo "plotpoll: created ${FILE_MB} MiB $out (df_avail=$avail_line plot_bytes=$files_sum metric=$total)" >&2
+					else
+						rm -f -- "$out" 2>/dev/null || true
+						echo "plotpoll: failed to create $out" >&2
+						echo "plotpoll: dd said: $dd_output" >&2
+					fi
 				fi
 			fi
 		else
