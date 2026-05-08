@@ -52,7 +52,7 @@ while true; do
 							dd if=/dev/zero of="$tmp" bs=$((1024 * 1024)) count="$FILE_MB" conv=fsync 2>&1
 						)"; then
 							if mv_output="$(mv -- "$tmp" "$out" 2>&1)"; then
-								echo "plotpoll: created ${FILE_MB} MiB $out (df_avail=$avail_line plot_bytes=$files_sum metric=$total)" >&2
+								echo "plotpoll: $(date '+%Y-%m-%d %H:%M:%S %z') created ${FILE_MB} MiB $out (df_avail=$avail_line plot_bytes=$files_sum metric=$total)" >&2
 							else
 								rm -f -- "$tmp" 2>/dev/null || true
 								echo "plotpoll: mv $tmp -> $out failed" >&2
