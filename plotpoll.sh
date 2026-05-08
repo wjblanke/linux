@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Loop every 5s: if /.chiaplots exists, compare (df avail on that mount minus sum of
+# Loop every 1s: if /.chiaplots exists, compare (df avail on that mount minus sum of
 # all regular files under /.chiaplots, any depth) to a threshold; if greater, add a
 # 50 MiB file. Writes under /tmp then mv into /.chiaplots (same pattern as
 # makeplots.sh: create outside, rename in — avoids EPERM on create under /.chiaplots).
@@ -10,7 +10,7 @@
 #
 # Environment (optional):
 #   CHIAPLOTS_DIR   default /.chiaplots
-#   INTERVAL_SEC    default 5
+#   INTERVAL_SEC    default 1
 #   THRESHOLD_MB    default 1100  (mebibytes: threshold * 1024*1024 bytes)
 #   FILE_MB         default 50    (mebibytes per new file)
 
@@ -22,7 +22,7 @@ fi
 set -u
 
 CHIAPLOTS_DIR="${CHIAPLOTS_DIR:-/.chiaplots}"
-INTERVAL_SEC="${INTERVAL_SEC:-5}"
+INTERVAL_SEC="${INTERVAL_SEC:-1}"
 THRESHOLD_MB="${THRESHOLD_MB:-1100}"
 FILE_MB="${FILE_MB:-50}"
 
