@@ -35,12 +35,14 @@ sum_tree_regular_files() {
 }
 
 while true; do
+	room_to_create=0
 	if [[ -d "$CHIAPLOTS_DIR" ]]; then
 		avail_line="$(df -B1 "$CHIAPLOTS_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
 		if [[ -n "$avail_line" ]] && [[ "$avail_line" =~ ^[0-9]+$ ]]; then
 			files_sum="$(sum_tree_regular_files "$CHIAPLOTS_DIR")"
 			total=$((avail_line - files_sum))
 			if (( total > threshold_bytes )); then
+				room_to_create=1
 				if [[ ! -w "$CHIAPLOTS_DIR" ]]; then
 					echo "plotpoll: $CHIAPLOTS_DIR not writable (try: sudo $0)" >&2
 				else
@@ -70,5 +72,7 @@ while true; do
 			echo "plotpoll: df failed for $CHIAPLOTS_DIR" >&2
 		fi
 	fi
-	sleep "$INTERVAL_SEC"
+	if (( room_to_create == 0 )); then
+		sleep "$INTERVAL_SEC"
+	fi
 done
