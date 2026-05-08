@@ -44,6 +44,8 @@ while true; do
 					status=none 2>/dev/null; then
 					rm -f -- "$out" 2>/dev/null || true
 					echo "plotpoll: failed to create $out" >&2
+				else
+					echo "plotpoll: created ${FILE_MB} MiB $out (df_avail=$avail_line plot_bytes=$files_sum metric=$total)" >&2
 				fi
 			fi
 		else
