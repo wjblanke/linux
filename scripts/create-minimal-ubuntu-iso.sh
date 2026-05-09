@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# Create a minimal Ubuntu root filesystem with the kernel built from this tree.
+# Create a minimal Ubuntu live-style ISO with the kernel built from this tree.
+#
+# The root filesystem is still assembled under OUTPUT_DIR/rootfs (debootstrap,
+# your modules, plotpoll, /.chiaplots), then squashed into casper/filesystem.squashfs
+# and wrapped with grub-mkrescue (BIOS + EFI hybrid on amd64).
 #
 # Intended host: Ubuntu or Debian (debootstrap, chroot). On macOS, run inside
-# Docker with the repo bind-mounted, e.g.:
-#   docker run --rm -it --privileged -v "$PWD":/src ubuntu:noble bash
-#   apt-get update && apt-get install -y debootstrap
-#   /src/scripts/create-minimal-ubuntu-rootfs.sh /src /tmp/minimal-out
+# Docker with the repo bind-mounted (privileged). See fs/ext4/CHIAPLOTS.md.
 #
 # Usage:
-#   sudo ./scripts/create-minimal-ubuntu-rootfs.sh [LINUX_SRC] [OUTPUT_DIR]
+#   sudo ./scripts/create-minimal-ubuntu-iso.sh [LINUX_SRC] [OUTPUT_DIR]
 #
 # Environment:
 #   RELEASE        Ubuntu codename (default: noble)
 #   ARCH           debootstrap arch (default: host; x86_64 -> amd64, aarch64 -> arm64)
 #   APT_MIRROR     archive base URL (defaults by arch)
-#   EXTRA_PKGS     space-separated apt packages (optional; e.g. "openssh-server")
-#   SKIP_DEBOOTSTRAP  set to 1 to only (re)install kernel into existing OUTPUT_DIR/rootfs
+#   EXTRA_PKGS     space-separated apt packages (optional)
+#   SKIP_DEBOOTSTRAP  set to 1 to reuse existing OUTPUT_DIR/rootfs (still rebuilds squashfs+ISO)
 #
 # Build the kernel first for the same ARCH as the rootfs (e.g. make bzImage modules).
-# This script runs modules_install into the rootfs; it does not run "make" for you.
 #
 # Bundles repository root plotpoll.sh as /usr/local/bin/plotpoll.sh (required file).
 # Pre-creates /.chiaplots (mode 0777) for ext4 chiaplots testing; tighten in production.
@@ -34,7 +34,7 @@ abspath() {
 }
 
 LINUX_SRC="$(abspath "${1:-.}")"
-OUT="$(abspath "${2:-./minimal-ubuntu-rootfs}")"
+OUT="$(abspath "${2:-./minimal-ubuntu-iso}")"
 RELEASE="${RELEASE:-noble}"
 HOST_ARCH="$(uname -m)"
 ARCH="${ARCH:-$HOST_ARCH}"
@@ -52,6 +52,7 @@ map_debian_arch() {
 
 DEB_ARCH="$(map_debian_arch "$ARCH")"
 ROOTFS="${OUT}/rootfs"
+ISOSTAGE="${OUT}/isostage"
 CHROOT_MOUNTS=0
 
 cleanup_chroot_mounts() {
@@ -155,8 +156,6 @@ if [[ "$SKIP_DEBOOTSTRAP" != "1" ]]; then
 
 	cp /etc/resolv.conf "${ROOTFS}/etc/resolv.conf" 2>/dev/null || true
 
-	# Smallest set that still supports update-initramfs for your vmlinuz/modules.
-	# Add EXTRA_PKGS="systemd systemd-sysv" if you need full Ubuntu init.
 	run_in_chroot /bin/bash -c "
 		set -e
 		export DEBIAN_FRONTEND=noninteractive
@@ -199,9 +198,15 @@ echo "==> Create /.chiaplots (chiaplots directory at filesystem root)"
 mkdir -p "${ROOTFS}/.chiaplots"
 chmod 0777 "${ROOTFS}/.chiaplots"
 
-echo "==> depmod + initramfs in chroot"
+echo "==> Install casper + initramfs (live boot from squashfs)"
+cp /etc/resolv.conf "${ROOTFS}/etc/resolv.conf" 2>/dev/null || true
 run_in_chroot /bin/bash -c "
 	set -e
+	export DEBIAN_FRONTEND=noninteractive
+	apt-get update -qq
+	apt-get install -y casper
+	apt-get clean
+	rm -rf /var/lib/apt/lists/*
 	depmod -a '${KREL}'
 	update-initramfs -c -k '${KREL}'
 "
@@ -210,39 +215,93 @@ INITRD="${ROOTFS}/boot/initrd.img-${KREL}"
 if [[ ! -f "$INITRD" ]]; then
 	INITRD="$(ls "${ROOTFS}/boot"/initrd.img* 2>/dev/null | head -1 || true)"
 fi
+if [[ -z "$INITRD" || ! -f "$INITRD" ]]; then
+	echo "No initrd.img-* under ${ROOTFS}/boot after update-initramfs." >&2
+	exit 1
+fi
+
+echo "==> Host tools for squashfs + ISO (xorriso, grub-mkrescue)"
+if command -v apt-get >/dev/null 2>&1; then
+	apt-get update -qq
+	case "$DEB_ARCH" in
+	amd64 | i386)
+		DEBIAN_FRONTEND=noninteractive apt-get install -y \
+			squashfs-tools xorriso grub-common grub-pc-bin grub-efi-amd64-bin
+		;;
+	arm64)
+		DEBIAN_FRONTEND=noninteractive apt-get install -y \
+			squashfs-tools xorriso grub-common grub-efi-arm64-bin
+		;;
+	*)
+		echo "Install squashfs-tools xorriso grub packages for arch ${DEB_ARCH} manually." >&2
+		exit 1
+		;;
+	esac
+else
+	for c in mksquashfs xorriso grub-mkrescue; do
+		command -v "$c" >/dev/null 2>&1 || {
+			echo "Missing host command: $c (install squashfs-tools xorriso grub-common ...)" >&2
+			exit 1
+		}
+	done
+fi
+
+echo "==> Squash rootfs -> casper/filesystem.squashfs"
+rm -rf "${ISOSTAGE}"
+mkdir -p "${ISOSTAGE}/casper" "${ISOSTAGE}/boot/grub" "${ISOSTAGE}/.disk"
+mksquashfs "${ROOTFS}" "${ISOSTAGE}/casper/filesystem.squashfs" \
+	-comp xz -b 1M -noappend -no-recovery
+
+# Bootloader-visible kernel + initrd (casper expects a plain vmlinuz on the ISO)
+if [[ "$BOOT_DST" == *.gz ]]; then
+	gzip -dc -- "$BOOT_DST" >"${ISOSTAGE}/casper/vmlinuz"
+else
+	cp -a -- "$BOOT_DST" "${ISOSTAGE}/casper/vmlinuz"
+fi
+cp -a -- "$INITRD" "${ISOSTAGE}/casper/initrd"
+
+cat >"${ISOSTAGE}/boot/grub/grub.cfg" <<GRUBEOF
+set default=0
+set timeout=5
+menuentry "Minimal Ubuntu chiaplots (${KREL})" {
+	linux /casper/vmlinuz boot=casper quiet splash noprompt --
+	initrd /casper/initrd
+}
+GRUBEOF
+
+echo "Ubuntu chiaplots minimal ${RELEASE} ${KREL}" >"${ISOSTAGE}/.disk/info"
+echo "full_cd/single" >"${ISOSTAGE}/.disk/cd_type"
+touch "${ISOSTAGE}/.disk/base_installable"
+
+ISO_PATH="${OUT}/minimal-ubuntu-${RELEASE}-${KREL}-${DEB_ARCH}.iso"
+echo "==> grub-mkrescue -> ${ISO_PATH}"
+rm -f -- "${ISO_PATH}"
+grub-mkrescue --compress=xz -o "${ISO_PATH}" "${ISOSTAGE}" \
+	-- -volid "CHIAPLOTS_${KREL}" -appid "chiaplots-minimal"
 
 trap - EXIT
 cleanup_chroot_mounts
 
 cat >"${OUT}/README.txt" <<EOF
-Minimal Ubuntu (${RELEASE}, ${DEB_ARCH}) rootfs with custom kernel ${KREL}
+Minimal Ubuntu (${RELEASE}, ${DEB_ARCH}) hybrid ISO with custom kernel ${KREL}
 
-Kernel:
-  ${BOOT_DST}
-Initramfs:
-  ${INITRD:-<none>}
+ISO (boot BIOS or UEFI):
+  ${ISO_PATH}
+
+Live session uses casper + filesystem.squashfs (your rootfs, including plotpoll and /.chiaplots).
+Unpacked rootfs (for inspection / SKIP rebuilds):
+  ${ROOTFS}
 
 Source tree: ${LINUX_SRC}
-Pack: tar -C ${ROOTFS} -czf rootfs.tar.gz .
 
-Boot: point GRUB/QEMU at vmlinuz + initrd.img; root= on the deployed disk.
-No Ubuntu linux-image package — only /lib/modules/${KREL} from your build.
+QEMU (amd64 example):
+  qemu-system-x86_64 -m 2G -cdrom ${ISO_PATH} -boot d
 
-Directory /.chiaplots is pre-created (mode 0777) for ext4 chiaplots; use stricter modes in production.
-
-Chiaplots helper (from this kernel tree):
-  /usr/local/bin/plotpoll.sh
-  Expects an ext4 root with this kernel; may still use sudo depending on mount options.
-
-Optional: reinstall kernel only with
-  SKIP_DEBOOTSTRAP=1 sudo $0 ${LINUX_SRC} ${OUT}
+Reinstall kernel + ISO only (reuse debootstrap tree):
+  SKIP_DEBOOTSTRAP=1 $0 ${LINUX_SRC} ${OUT}
 EOF
 
-TARBALL="${OUT}/minimal-ubuntu-${RELEASE}-${KREL}-${DEB_ARCH}.tar.gz"
-echo "==> Tarball ${TARBALL}"
-tar -C "${ROOTFS}" -czf "${TARBALL}" .
-
 echo "Done."
+echo "  ISO:      ${ISO_PATH}"
 echo "  Rootfs:   ${ROOTFS}"
-echo "  Tarball:  ${TARBALL}"
 echo "  README:   ${OUT}/README.txt"

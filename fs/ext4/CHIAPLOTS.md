@@ -16,7 +16,7 @@ Optional behavior for a directory named **`.chiaplots`** at the **filesystem roo
 | **Diagnostics** | **`pr_warn_ratelimited("ext4 chiaplots[%s]: …")`** around eviction / **`try_make_space`** / **`force_evict`**. Includes **`evict:`** lines for lookup, **`dentry_open`**, empty directory, no regular file, **`vfs_unlink`**, and race cases (**`.chiaplots` gone before unlink**, **victim missing before unlink**). Use **`dmesg`** / **`journalctl -k`** (grep **`chiaplots`**). Messages are **ratelimited**; bursts may be suppressed. |
 | **Userland: `makeplots.sh`** | Repo root (POSIX **`sh`**): batch-fill staging; stop when **`df` avail** on the staging volume **minus** the recursive byte sum of **all regular files** under **`CHIAPLOTS`** (default **`/.chiaplots`**) is **≤ `MIN_FREE_GIB` GiB** (default **1**); then **`mv`** into **`/.chiaplots`**. See **Userland: `makeplots.sh`** below. |
 | **Userland: `plotpoll.sh`** | Repo root (**bash**): loop when the same **metric** exceeds a threshold; see **Userland: `plotpoll.sh`** below. |
-| **Minimal distribution** | **`scripts/create-minimal-ubuntu-rootfs.sh`**: **`debootstrap`** minbase Ubuntu rootfs, install this tree’s kernel + modules + initramfs, copy **`plotpoll.sh`** to **`/usr/local/bin`**, pre-create **`/.chiaplots`** (**0777**). Produces a **`.tar.gz`**. See **Minimal Ubuntu distribution** below. |
+| **Minimal distribution** | **`scripts/create-minimal-ubuntu-iso.sh`**: **`debootstrap`** minbase Ubuntu, install this tree’s kernel + modules, **`casper`** + **`update-initramfs`**, **`plotpoll.sh`**, **`/.chiaplots`**; **`mksquashfs`** + **`grub-mkrescue`** → **hybrid `.iso`**. See **Minimal Ubuntu distribution** below. |
 
 ---
 
@@ -59,7 +59,7 @@ To tune headroom, edit **`CHIAPLOTS_MARGIN_BYTES`** in **`fs/ext4/chiaplots.c`**
 | **`fs/ext4/ext4.h`** | Declarations for chiaplots helpers and **`ext4_has_free_clusters()`**. |
 | **`fs/ext4/Makefile`** | **`chiaplots.o`**. |
 | **`makeplots.sh`** / **`plotpoll.sh`** | Repository root — batch vs periodic userland helpers; see **Userland** sections. |
-| **`scripts/create-minimal-ubuntu-rootfs.sh`** | Builds a minimal Ubuntu rootfs tarball with this kernel, **`plotpoll.sh`**, and **`/.chiaplots`**; see **Minimal Ubuntu distribution**. |
+| **`scripts/create-minimal-ubuntu-iso.sh`** | Builds a minimal Ubuntu **live ISO** (squashfs + casper + GRUB) with this kernel, **`plotpoll.sh`**, and **`/.chiaplots`**; see **Minimal Ubuntu distribution**. |
 
 ---
 
@@ -205,61 +205,73 @@ Confirm it matches the kernel you built before testing chiaplots behavior.
 
 ## Minimal Ubuntu distribution
 
-The script **`scripts/create-minimal-ubuntu-rootfs.sh`** packages a **small Ubuntu userland** ( **`debootstrap --variant=minbase`**, **`main`** only) together with **your built kernel** from this tree: **`vmlinuz`**, **`modules_install`** into **`/lib/modules/$(kernelrelease)`**, and **`update-initramfs`** inside the chroot. It is meant for **VMs / QEMU / custom images** where the root filesystem is **ext4** and you want **`plotpoll`** and **`/.chiaplots`** ready without hand-assembling a rootfs.
+The script **`scripts/create-minimal-ubuntu-iso.sh`** builds a **small Ubuntu live ISO** ( **`debootstrap --variant=minbase`**, **`main`** only), installs **your built kernel** and modules into a staging rootfs, adds **`casper`** so the initramfs can pivot into a **squashfs** live image, copies **`plotpoll.sh`** and creates **`/.chiaplots`**, then runs **`mksquashfs`** and **`grub-mkrescue`** to emit a **BIOS + UEFI hybrid** **`.iso`** ( **`amd64`** / **`i386`** ) or an EFI-oriented ISO on **arm64**.
 
-### What ends up in the image
+After boot, the live root is typically an **overlay** on top of the squashfs; use an **ext4** disk or loop device for workloads where **chiaplots** must own the real root mount.
+
+### What ends up in the build output
 
 | Item | Location / notes |
 |------|-------------------|
-| Custom kernel | **`/boot/vmlinuz-<kernelrelease>`** (from **`arch/x86/boot/bzImage`** or **`arch/arm64/boot/Image`**) |
-| Modules + initramfs | **`/lib/modules/<kernelrelease>/`**, **`/boot/initrd.img-<kernelrelease>`** |
-| **`plotpoll.sh`** | **`/usr/local/bin/plotpoll.sh`** (copy of repository root **`plotpoll.sh`**; file must exist in the tree) |
-| **`/.chiaplots`** | Pre-created with mode **0777** (permissive for tests; tighten for production) |
-| Tarball | **`OUTPUT_DIR/minimal-ubuntu-<release>-<kernelrelease>-<arch>.tar.gz`** |
+| **ISO** | **`OUTPUT_DIR/minimal-ubuntu-<release>-<kernelrelease>-<arch>.iso`** |
+| **Staging rootfs** | **`OUTPUT_DIR/rootfs/`** (same tree that was squashed; useful for inspection) |
+| **ISO build tree** | **`OUTPUT_DIR/isostage/`** (**`casper/`**, **`boot/grub/`**, **`.disk/`**) |
+| Inside squashfs | **`/boot/vmlinuz-*`**, **`/lib/modules/`**, **`/usr/local/bin/plotpoll.sh`**, **`/.chiaplots`** (**0777**) |
 
-The script also writes **`OUTPUT_DIR/README.txt`** and leaves an unpacked **`OUTPUT_DIR/rootfs/`**.
+The script writes **`OUTPUT_DIR/README.txt`**. It runs **`apt-get`** on the **build host** to install **`squashfs-tools`**, **`xorriso`**, and **GRUB** packages needed for **`grub-mkrescue`**.
 
 ### Prerequisites
 
 1. **Configure and build** this kernel for the target architecture (e.g. **`make -j"$(nproc)"`** so **`arch/.../bzImage`** or **`Image`** exists, and modules build).
-2. **Host:** Ubuntu or Debian with **`debootstrap`**, run as **root** (**`sudo`**). On **macOS**, run inside a **privileged** Ubuntu container with the repo bind-mounted (example below).
-3. Repository root must contain **`plotpoll.sh`** (the script fails if it is missing).
+2. **Host:** Ubuntu (**`noble`** or similar) with **`debootstrap`**, run as **root**. The script will **`apt-get install`** **ISO** tools on that host (requires network on first run).
+3. Repository root must contain **`plotpoll.sh`**.
 
 ### Create the distribution
 
-From the repository root (after a successful kernel build):
-
 ```bash
-sudo apt-get install -y debootstrap   # on the build host, if needed
-sudo ./scripts/create-minimal-ubuntu-rootfs.sh . /path/to/output-dir
+sudo apt-get install -y debootstrap   # if needed
+sudo ./scripts/create-minimal-ubuntu-iso.sh . /path/to/output-dir
 ```
 
-Arguments: **`[LINUX_SRC]`** (default **`.`**), **`[OUTPUT_DIR]`** (default **`./minimal-ubuntu-rootfs`** under the resolved path). **`LINUX_SRC`** must be the kernel tree containing **`Makefile`**, **`plotpoll.sh`**, and the built image.
+Arguments: **`[LINUX_SRC]`** (default **`.`**), **`[OUTPUT_DIR]`** (default **`./minimal-ubuntu-iso`**). **`LINUX_SRC`** must contain **`Makefile`**, **`plotpoll.sh`**, and the built kernel image.
 
 **Environment (optional):**
 
 | Variable | Meaning |
 |----------|---------|
 | **`RELEASE`** | Ubuntu codename (default **`noble`**) |
-| **`ARCH`** | **`debootstrap`** arch: host **`uname -m`** mapped to **`amd64`** / **`arm64`** / **`armhf`**, or set explicitly |
-| **`APT_MIRROR`** | Override archive URL (defaults differ for **ports** vs **archive.ubuntu.com**) |
-| **`EXTRA_PKGS`** | Extra **`apt`** packages (space-separated), e.g. **`openssh-server`** |
-| **`SKIP_DEBOOTSTRAP=1`** | Skip **`debootstrap`**; only reinstall kernel + **`plotpoll`** + **`/.chiaplots`** into existing **`OUTPUT_DIR/rootfs`** |
+| **`ARCH`** | **`debootstrap`** arch (**`amd64`** / **`arm64`** / …) |
+| **`APT_MIRROR`** | Override archive URL |
+| **`EXTRA_PKGS`** | Extra **`apt`** packages in the chroot (space-separated) |
+| **`SKIP_DEBOOTSTRAP=1`** | Reuse existing **`OUTPUT_DIR/rootfs`**; still reinstalls kernel, **casper**, squashfs, and ISO |
 
-### Docker (e.g. macOS host)
+### Docker on macOS
+
+Use **Docker Desktop** or **Colima**, **privileged** container, and bind-mount the repo plus an output directory. The container must reach the network for **`debootstrap`**, **`apt`** (including **`casper`**), and host **`apt-get`** for **xorriso** / **GRUB**.
 
 ```bash
-docker run --rm -it --privileged -v "$PWD":/src ubuntu:noble bash
-apt-get update && apt-get install -y debootstrap
-cd /src && make -j"$(nproc)"    # build kernel inside container if needed
-sudo /src/scripts/create-minimal-ubuntu-rootfs.sh /src /tmp/chiaplots-image
+mkdir -p docker-out
+docker run --rm -it --privileged \
+  -v "$PWD":/src -v "$PWD/docker-out":/out \
+  ubuntu:noble bash
+apt-get update
+apt-get install -y debootstrap build-essential libncurses-dev bison flex \
+  libssl-dev libelf-dev libdw-dev gawk bc cpio
+cd /src && test -f .config || make defconfig && make -j"$(nproc)"
+./scripts/create-minimal-ubuntu-iso.sh /src /out
 ```
 
-Cross-architecture rootfs (e.g. **arm64** image on **amd64**) needs **`qemu-user-static`** / **`binfmt`** on the host; the script does not set that up automatically.
+The **`.iso`** appears under **`./docker-out/`** on the Mac. **Apple Silicon** builds an **arm64** ISO; **Intel** builds **amd64**.
 
 ### Booting
 
-The tarball is a **rootfs only** (no partition table, no GRUB in the script). Point **QEMU**, **libvirt**, or a disk image workflow at **`vmlinuz` + `initrd.img`** and the unpacked root, or install a bootloader yourself. Root must be **ext4** with this kernel for **chiaplots** rules to apply.
+**QEMU (amd64):**
+
+```bash
+qemu-system-x86_64 -m 2G -cdrom minimal-ubuntu-*.iso -boot d
+```
+
+**chiaplots** applies when the workload’s root (or test data) is on **ext4** with this kernel; the **live overlay** root may differ from a bare **ext4** install—use a dedicated **ext4** disk or image for strict filesystem-level tests if needed.
 
 ---
 
