@@ -277,27 +277,51 @@ touch "${ISOSTAGE}/.disk/base_installable"
 ISO_PATH="${OUT}/minimal-ubuntu-${RELEASE}-${KREL}-${DEB_ARCH}.iso"
 echo "==> grub-mkrescue -> ${ISO_PATH}"
 rm -f -- "${ISO_PATH}"
-# Trailing args go to xorriso: use -as mkisofs so -V / -appid are valid (native xorriso rejects -appid).
-grub-mkrescue --compress=xz -o "${ISO_PATH}" "${ISOSTAGE}" \
-	-- -as mkisofs -V "CHIAPLOTS_${KREL}" -appid "chiaplots-minimal"
+# Trailing args after -- go to xorriso: -as mkisofs so -V / -appid are valid.
+#
+# arm64: default grub-mkrescue still embeds i386-pc (x86) BIOS boot metadata; guests
+# such as VirtualBox on Apple Silicon then report "x86 instead of arm". Force GRUB
+# modules from arm64-efi only (UEFI AArch64 ISO, no legacy PC floppy image).
+mkrescue=(grub-mkrescue --compress=xz -o "${ISO_PATH}")
+case "$DEB_ARCH" in
+arm64)
+	GRUB_ARM64_EFI=/usr/lib/grub/arm64-efi
+	if [[ ! -d "$GRUB_ARM64_EFI" ]]; then
+		echo "Missing ${GRUB_ARM64_EFI} (install grub-efi-arm64-bin on the build host)." >&2
+		exit 1
+	fi
+	mkrescue+=(-d "$GRUB_ARM64_EFI")
+	;;
+armhf)
+	GRUB_ARM_EFI=/usr/lib/grub/arm-efi
+	if [[ -d "$GRUB_ARM_EFI" ]]; then
+		mkrescue+=(-d "$GRUB_ARM_EFI")
+	fi
+	;;
+esac
+mkrescue+=("${ISOSTAGE}" -- -as mkisofs -V "CHIAPLOTS_${KREL}" -appid "chiaplots-minimal")
+"${mkrescue[@]}"
 
 trap - EXIT
 cleanup_chroot_mounts
 
 cat >"${OUT}/README.txt" <<EOF
-Minimal Ubuntu (${RELEASE}, ${DEB_ARCH}) hybrid ISO with custom kernel ${KREL}
+Minimal Ubuntu (${RELEASE}, ${DEB_ARCH}) live ISO with custom kernel ${KREL}
 
-ISO (boot BIOS or UEFI):
+ISO:
   ${ISO_PATH}
 
-Live session uses casper + filesystem.squashfs (your rootfs, including plotpoll and /.chiaplots).
+Boot:
+  amd64/i386: hybrid BIOS + UEFI (default grub-mkrescue).
+  arm64: UEFI AArch64 only (grub-mkrescue -d /usr/lib/grub/arm64-efi). Use an arm64
+  build environment (e.g. Docker linux/arm64 on Apple Silicon, not --platform linux/amd64)
+  so debootstrap, kernel, and ISO targets match the guest.
+
+Live session uses casper + filesystem.squashfs (plotpoll, /.chiaplots).
 Unpacked rootfs (for inspection / SKIP rebuilds):
   ${ROOTFS}
 
 Source tree: ${LINUX_SRC}
-
-QEMU (amd64 example):
-  qemu-system-x86_64 -m 2G -cdrom ${ISO_PATH} -boot d
 
 Reinstall kernel + ISO only (reuse debootstrap tree):
   SKIP_DEBOOTSTRAP=1 $0 ${LINUX_SRC} ${OUT}

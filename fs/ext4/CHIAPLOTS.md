@@ -16,7 +16,7 @@ Optional behavior for a directory named **`.chiaplots`** at the **filesystem roo
 | **Diagnostics** | **`pr_warn_ratelimited("ext4 chiaplots[%s]: …")`** around eviction / **`try_make_space`** / **`force_evict`**. Includes **`evict:`** lines for lookup, **`dentry_open`**, empty directory, no regular file, **`vfs_unlink`**, and race cases (**`.chiaplots` gone before unlink**, **victim missing before unlink**). Use **`dmesg`** / **`journalctl -k`** (grep **`chiaplots`**). Messages are **ratelimited**; bursts may be suppressed. |
 | **Userland: `makeplots.sh`** | Repo root (POSIX **`sh`**): batch-fill staging; stop when **`df` avail** on the staging volume **minus** the recursive byte sum of **all regular files** under **`CHIAPLOTS`** (default **`/.chiaplots`**) is **≤ `MIN_FREE_GIB` GiB** (default **1**); then **`mv`** into **`/.chiaplots`**. See **Userland: `makeplots.sh`** below. |
 | **Userland: `plotpoll.sh`** | Repo root (**bash**): loop when the same **metric** exceeds a threshold; see **Userland: `plotpoll.sh`** below. |
-| **Minimal distribution** | **`scripts/create-minimal-ubuntu-iso.sh`**: **`debootstrap`** minbase Ubuntu, install this tree’s kernel + modules, **`casper`** + **`update-initramfs`**, **`plotpoll.sh`**, **`/.chiaplots`**; **`mksquashfs`** + **`grub-mkrescue`** → **hybrid `.iso`**. See **Minimal Ubuntu distribution** below. |
+| **Minimal distribution** | **`scripts/create-minimal-ubuntu-iso.sh`**: **`debootstrap`** minbase Ubuntu, install this tree’s kernel + modules, **`casper`** + **`update-initramfs`**, **`plotpoll.sh`**, **`/.chiaplots`**; **`mksquashfs`** + **`grub-mkrescue`** → **`.iso`** (**amd64**: BIOS+UEFI hybrid; **arm64**: **`-d …/arm64-efi`** UEFI-only for Apple Silicon guests). See **Minimal Ubuntu distribution** below. |
 
 ---
 
@@ -205,7 +205,7 @@ Confirm it matches the kernel you built before testing chiaplots behavior.
 
 ## Minimal Ubuntu distribution
 
-The script **`scripts/create-minimal-ubuntu-iso.sh`** builds a **small Ubuntu live ISO** ( **`debootstrap --variant=minbase`**, **`main`** only), installs **your built kernel** and modules into a staging rootfs, adds **`casper`** so the initramfs can pivot into a **squashfs** live image, copies **`plotpoll.sh`** and creates **`/.chiaplots`**, then runs **`mksquashfs`** and **`grub-mkrescue`** to emit a **BIOS + UEFI hybrid** **`.iso`** ( **`amd64`** / **`i386`** ) or an EFI-oriented ISO on **arm64**.
+The script **`scripts/create-minimal-ubuntu-iso.sh`** builds a **small Ubuntu live ISO** ( **`debootstrap --variant=minbase`**, **`main`** only), installs **your built kernel** and modules into a staging rootfs, adds **`casper`** so the initramfs can pivot into a **squashfs** live image, copies **`plotpoll.sh`** and creates **`/.chiaplots`**, then runs **`mksquashfs`** and **`grub-mkrescue`**. **amd64** images use the usual **BIOS + UEFI hybrid** layout; **arm64** images use **`grub-mkrescue -d /usr/lib/grub/arm64-efi`** so the disc is **AArch64 UEFI** only (not an **x86** El Torito BIOS image), which **VirtualBox on Apple Silicon** and similar guests expect. Build **arm64** on a matching host (e.g. **`linux/arm64`** Docker on M1/M2), not **`--platform linux/amd64`**, unless you intentionally want an **amd64** guest.
 
 After boot, the live root is typically an **overlay** on top of the squashfs; use an **ext4** disk or loop device for workloads where **chiaplots** must own the real root mount.
 
@@ -223,7 +223,7 @@ The script writes **`OUTPUT_DIR/README.txt`**. It runs **`apt-get`** on the **bu
 ### Prerequisites
 
 1. **Configure and build** this kernel for the target architecture (e.g. **`make -j"$(nproc)"`** so **`arch/.../bzImage`** or **`Image`** exists, and modules build).
-2. **Host:** Ubuntu (**`noble`** or similar) with **`debootstrap`**, run as **root**. The script will **`apt-get install`** **ISO** tools on that host (**`squashfs-tools`**, **`xorriso`**, **`mtools`** — **`mformat`** is required by **`grub-mkrescue`** for BIOS boot — **`grub-*`**) on first run (needs network).
+2. **Host:** Ubuntu (**`noble`** or similar) with **`debootstrap`**, run as **root**. The script will **`apt-get install`** **ISO** tools on that host (**`squashfs-tools`**, **`xorriso`**, **`mtools`**, **`grub-*`**). **`mtools`** supplies **`mformat`**, which **`grub-mkrescue`** uses for **amd64** BIOS boot metadata; **arm64** ISOs are **EFI-only** and may not need it, but the script still installs **`mtools`** for compatibility.
 3. Repository root must contain **`plotpoll.sh`**.
 
 ### Create the distribution
