@@ -220,27 +220,28 @@ if [[ -z "$INITRD" || ! -f "$INITRD" ]]; then
 	exit 1
 fi
 
-echo "==> Host tools for squashfs + ISO (xorriso, grub-mkrescue)"
+echo "==> Host tools for squashfs + ISO (xorriso, grub-mkrescue, mtools)"
+# grub-mkrescue runs mformat(1) from the mtools package for the BIOS boot floppy image.
 if command -v apt-get >/dev/null 2>&1; then
 	apt-get update -qq
 	case "$DEB_ARCH" in
 	amd64 | i386)
 		DEBIAN_FRONTEND=noninteractive apt-get install -y \
-			squashfs-tools xorriso grub-common grub-pc-bin grub-efi-amd64-bin
+			squashfs-tools xorriso mtools grub-common grub-pc-bin grub-efi-amd64-bin
 		;;
 	arm64)
 		DEBIAN_FRONTEND=noninteractive apt-get install -y \
-			squashfs-tools xorriso grub-common grub-efi-arm64-bin
+			squashfs-tools xorriso mtools grub-common grub-efi-arm64-bin
 		;;
 	*)
-		echo "Install squashfs-tools xorriso grub packages for arch ${DEB_ARCH} manually." >&2
+		echo "Install squashfs-tools xorriso mtools grub packages for arch ${DEB_ARCH} manually." >&2
 		exit 1
 		;;
 	esac
 else
-	for c in mksquashfs xorriso grub-mkrescue; do
+	for c in mksquashfs xorriso mformat grub-mkrescue; do
 		command -v "$c" >/dev/null 2>&1 || {
-			echo "Missing host command: $c (install squashfs-tools xorriso grub-common ...)" >&2
+			echo "Missing host command: $c (e.g. apt-get install -y squashfs-tools xorriso mtools grub-common ...)" >&2
 			exit 1
 		}
 	done
@@ -276,8 +277,9 @@ touch "${ISOSTAGE}/.disk/base_installable"
 ISO_PATH="${OUT}/minimal-ubuntu-${RELEASE}-${KREL}-${DEB_ARCH}.iso"
 echo "==> grub-mkrescue -> ${ISO_PATH}"
 rm -f -- "${ISO_PATH}"
+# Trailing args go to xorriso: use -as mkisofs so -V / -appid are valid (native xorriso rejects -appid).
 grub-mkrescue --compress=xz -o "${ISO_PATH}" "${ISOSTAGE}" \
-	-- -volid "CHIAPLOTS_${KREL}" -appid "chiaplots-minimal"
+	-- -as mkisofs -V "CHIAPLOTS_${KREL}" -appid "chiaplots-minimal"
 
 trap - EXIT
 cleanup_chroot_mounts

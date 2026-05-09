@@ -223,7 +223,7 @@ The script writes **`OUTPUT_DIR/README.txt`**. It runs **`apt-get`** on the **bu
 ### Prerequisites
 
 1. **Configure and build** this kernel for the target architecture (e.g. **`make -j"$(nproc)"`** so **`arch/.../bzImage`** or **`Image`** exists, and modules build).
-2. **Host:** Ubuntu (**`noble`** or similar) with **`debootstrap`**, run as **root**. The script will **`apt-get install`** **ISO** tools on that host (requires network on first run).
+2. **Host:** Ubuntu (**`noble`** or similar) with **`debootstrap`**, run as **root**. The script will **`apt-get install`** **ISO** tools on that host (**`squashfs-tools`**, **`xorriso`**, **`mtools`** — **`mformat`** is required by **`grub-mkrescue`** for BIOS boot — **`grub-*`**) on first run (needs network).
 3. Repository root must contain **`plotpoll.sh`**.
 
 ### Create the distribution
