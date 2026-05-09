@@ -16,7 +16,7 @@ Optional behavior for a directory named **`.chiaplots`** at the **filesystem roo
 | **Diagnostics** | **`pr_warn_ratelimited("ext4 chiaplots[%s]: …")`** around eviction / **`try_make_space`** / **`force_evict`**. Includes **`evict:`** lines for lookup, **`dentry_open`**, empty directory, no regular file, **`vfs_unlink`**, and race cases (**`.chiaplots` gone before unlink**, **victim missing before unlink**). Use **`dmesg`** / **`journalctl -k`** (grep **`chiaplots`**). Messages are **ratelimited**; bursts may be suppressed. |
 | **Userland: `makeplots.sh`** | Repo root (POSIX **`sh`**): batch-fill staging; stop when **`df` avail** on the staging volume **minus** the recursive byte sum of **all regular files** under **`CHIAPLOTS`** (default **`/.chiaplots`**) is **≤ `MIN_FREE_GIB` GiB** (default **1**); then **`mv`** into **`/.chiaplots`**. See **Userland: `makeplots.sh`** below. |
 | **Userland: `plotpoll.sh`** | Repo root (**bash**): loop when the same **metric** exceeds a threshold; see **Userland: `plotpoll.sh`** below. |
-| **Minimal distribution** | **`scripts/create-minimal-ubuntu-iso.sh`**: **`debootstrap`** minbase Ubuntu, install this tree’s kernel + modules, **`casper`** + **`update-initramfs`**, **`plotpoll.sh`**, **`/.chiaplots`**; **`mksquashfs`** + **`grub-mkrescue`** → **`.iso`** (**amd64**: BIOS+UEFI hybrid; **arm64**: **`-d …/arm64-efi`** UEFI-only for Apple Silicon guests). See **Minimal Ubuntu distribution** below. |
+| **Minimal distribution** | **`scripts/prepare-chiaplots-cubic.sh`** stages **`plotpoll.sh`** and a **Cubic** how-to; install **kernel `.deb`** packages (e.g. **`fakeroot make bindeb-pkg`**) inside **Cubic**’s chroot, add **`/.chiaplots`**, then finish the **Cubic** wizard. See **Minimal Ubuntu distribution (Cubic)** below. |
 
 ---
 
@@ -59,7 +59,7 @@ To tune headroom, edit **`CHIAPLOTS_MARGIN_BYTES`** in **`fs/ext4/chiaplots.c`**
 | **`fs/ext4/ext4.h`** | Declarations for chiaplots helpers and **`ext4_has_free_clusters()`**. |
 | **`fs/ext4/Makefile`** | **`chiaplots.o`**. |
 | **`makeplots.sh`** / **`plotpoll.sh`** | Repository root — batch vs periodic userland helpers; see **Userland** sections. |
-| **`scripts/create-minimal-ubuntu-iso.sh`** | Builds a minimal Ubuntu **live ISO** (squashfs + casper + GRUB) with this kernel, **`plotpoll.sh`**, and **`/.chiaplots`**; see **Minimal Ubuntu distribution**. |
+| **`scripts/prepare-chiaplots-cubic.sh`** | Stages **`plotpoll.sh`** plus **README** / example chroot commands for **Cubic**; see **Minimal Ubuntu distribution (Cubic)**. |
 
 ---
 
@@ -203,47 +203,50 @@ Confirm it matches the kernel you built before testing chiaplots behavior.
 
 ---
 
-## Minimal Ubuntu distribution
+## Minimal Ubuntu distribution (Cubic)
 
-The script **`scripts/create-minimal-ubuntu-iso.sh`** builds a **small Ubuntu live ISO** ( **`debootstrap --variant=minbase`**, **`main`** only), installs **your built kernel** and modules into a staging rootfs, adds **`casper`** so the initramfs can pivot into a **squashfs** live image, copies **`plotpoll.sh`** and creates **`/.chiaplots`**, then runs **`mksquashfs`** and **`grub-mkrescue`**. **amd64** images use the usual **BIOS + UEFI hybrid** layout; **arm64** images use **`grub-mkrescue -d /usr/lib/grub/arm64-efi`** so the disc is **AArch64 UEFI** only (not an **x86** El Torito BIOS image), which **VirtualBox on Apple Silicon** and similar guests expect. Build **arm64** on a matching host (e.g. **`linux/arm64`** Docker on M1/M2), not **`--platform linux/amd64`**, unless you intentionally want an **amd64** guest.
+**[Cubic](https://github.com/PJ-Singh-001/Cubic)** (Custom Ubuntu ISO Creator) is the supported way here to remix an official Ubuntu **`.iso`**: graphical project wizard, chroot terminal for packages and files, then regenerated ISO output.
 
-After boot, the live root is typically an **overlay** on top of the squashfs; use an **ext4** disk or loop device for workloads where **chiaplots** must own the real root mount.
+This repository does **not** wrap Cubic in automation (upstream is GUI-first). Use **`scripts/prepare-chiaplots-cubic.sh`** to stage **`plotpoll.sh`** and a short **`README.txt`** / **`chroot-commands.example.sh`** next to your Cubic work.
 
-### What ends up in the build output
+### Kernel packages for the chroot
 
-| Item | Location / notes |
-|------|-------------------|
-| **ISO** | **`OUTPUT_DIR/minimal-ubuntu-<release>-<kernelrelease>-<arch>.iso`** |
-| **Staging rootfs** | **`OUTPUT_DIR/rootfs/`** (same tree that was squashed; useful for inspection) |
-| **ISO build tree** | **`OUTPUT_DIR/isostage/`** (**`casper/`**, **`boot/grub/`**, **`.disk/`**) |
-| Inside squashfs | **`/boot/vmlinuz-*`**, **`/lib/modules/`**, **`/usr/local/bin/plotpoll.sh`**, **`/.chiaplots`** (**0777**) |
+Inside Cubic’s environment, install this tree as normal **Debian kernel packages** (modules included), not a raw **`vmlinuz`** copy:
 
-The script writes **`OUTPUT_DIR/README.txt`**. It runs **`apt-get`** on the **build host** to install **`squashfs-tools`**, **`xorriso`**, **`mtools`**, and **GRUB** packages needed for **`grub-mkrescue`**.
+```bash
+cd /path/to/linux
+fakeroot make -j"$(nproc)" bindeb-pkg
+```
+
+Packages are written to the **parent directory** of the kernel source. Copy **`linux-image-*.deb`** and **`linux-modules-*.deb`** into the Cubic chroot (e.g. **`/tmp`**) and install with **`apt install -y ./linux-image-*.deb ./linux-modules-*.deb`** (or **`dpkg -i`** then **`apt -f install`**).
+
+Optional: **`RUN_BINDEB=1 OUTPUT_BINDEB_COPY=1 ./scripts/prepare-chiaplots-cubic.sh . ./staging`** runs **`bindeb-pkg`** and copies matching **`linux-image` / `linux-modules`** **`.deb`** files into **`./staging`** (slow; requires full **`.deb`** build dependencies).
+
+### Stage helper and Cubic install
+
+```bash
+./scripts/prepare-chiaplots-cubic.sh . /path/to/staging-dir
+```
+
+On Ubuntu, install Cubic (see **`staging-dir/README.txt`** for the current PPA pattern: **`ppa:cubic-wizard/release`**).
+
+### What you add in the Cubic chroot
+
+| Step | Action |
+|------|--------|
+| Kernel | Install **`linux-image-*.deb`** / **`linux-modules-*.deb`** from **`bindeb-pkg`**, then **`update-initramfs -u -k all`** if needed. |
+| **`plotpoll.sh`** | **`install -m 0755 …/plotpoll.sh /usr/local/bin/plotpoll.sh`** |
+| **`/.chiaplots`** | **`mkdir -p /.chiaplots && chmod 0777 /.chiaplots`** |
+
+### Live session vs installed system
+
+Ubuntu **live** images use **casper** and an **overlay**; that is not the same as a long-term **ext4** root. **chiaplots** behavior that depends on **`/`** being the real **ext4** superblock is best validated **after installing** the customized system to a disk (or on any normal **ext4** root), not only on the live desktop.
 
 ### Prerequisites
 
-1. **Configure and build** this kernel for the target architecture (e.g. **`make -j"$(nproc)"`** so **`arch/.../bzImage`** or **`Image`** exists, and modules build).
-2. **Host:** Ubuntu (**`noble`** or similar) with **`debootstrap`**, run as **root**. The script will **`apt-get install`** **ISO** tools on that host (**`squashfs-tools`**, **`xorriso`**, **`mtools`**, **`grub-*`**). **`mtools`** supplies **`mformat`**, which **`grub-mkrescue`** uses for **amd64** BIOS boot metadata; **arm64** ISOs are **EFI-only** and may not need it, but the script still installs **`mtools`** for compatibility.
-3. Repository root must contain **`plotpoll.sh`**.
-
-### Create the distribution
-
-```bash
-sudo apt-get install -y debootstrap   # if needed
-sudo ./scripts/create-minimal-ubuntu-iso.sh . /path/to/output-dir
-```
-
-Arguments: **`[LINUX_SRC]`** (default **`.`**), **`[OUTPUT_DIR]`** (default **`./minimal-ubuntu-iso`**). **`LINUX_SRC`** must contain **`Makefile`**, **`plotpoll.sh`**, and the built kernel image.
-
-**Environment (optional):**
-
-| Variable | Meaning |
-|----------|---------|
-| **`RELEASE`** | Ubuntu codename (default **`noble`**) |
-| **`ARCH`** | **`debootstrap`** arch (**`amd64`** / **`arm64`** / …) |
-| **`APT_MIRROR`** | Override archive URL |
-| **`EXTRA_PKGS`** | Extra **`apt`** packages in the chroot (space-separated) |
-| **`SKIP_DEBOOTSTRAP=1`** | Reuse existing **`OUTPUT_DIR/rootfs`**; still reinstalls kernel, **casper**, squashfs, and ISO |
+1. **Configure and build** this kernel tree enough to produce **`bindeb-pkg`** (install your distro’s kernel build dependencies, including **`fakeroot`** for **`bindeb-pkg`**).
+2. **Host:** Ubuntu with **Cubic** and enough disk space for the ISO project.
+3. **`plotpoll.sh`** at the repository root (same as **`LINUX_SRC`** when **`LINUX_SRC`** is **`.`**).
 
 ---
 
