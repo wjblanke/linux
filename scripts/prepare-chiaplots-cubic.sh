@@ -69,7 +69,7 @@ This directory was created by:
 
 Contents of this directory:
   plotpoll.sh                  Copy into the Cubic chroot with your linux-*.deb files.
-  chroot-commands.example.sh   Mirrors section 3 below (adjust STAGING if needed).
+  chroot-commands.example.sh   Mirrors section 3 below (kernel, plotpoll, Chia; adjust STAGING).
   README.txt                   This file (aligned with fs/ext4/CHIAPLOTS.md).
 
 Cubic remixes an official Ubuntu .iso: extract filesystem, customize as root inside
@@ -83,6 +83,7 @@ Prerequisites
 - Base .iso arch matches your kernel (amd64 vs arm64). Prefer same release family
   as the chroot (e.g. Noble ISO for noble userspace).
 - plotpoll.sh is staged here from: ${LINUX_SRC}
+- Network in the Cubic chroot for the Chia APT step (curl + repo.chia.net).
 
 Install Cubic
 -------------
@@ -129,8 +130,8 @@ the custom root. Cubic's UI shows the project path; open it in a file manager or
 second host terminal. Common convention: copy into /tmp/chiaplots-staging/ inside
 the chroot, then run section 3 from there.
 
-3. Inside Cubic's root shell (kernel, plotpoll, /.chiaplots)
-------------------------------------------------------------
+3. Inside Cubic's root shell (kernel, plotpoll, /.chiaplots, Chia)
+----------------------------------------------------------------
 Run after linux-image-*.deb, linux-modules-*.deb, and plotpoll.sh are in one place
 (example: /tmp/chiaplots-staging):
 
@@ -153,6 +154,13 @@ Run after linux-image-*.deb, linux-modules-*.deb, and plotpoll.sh are in one pla
   # 3d — Initramfs (often already done by postinst; safe to repeat)
   update-initramfs -u -k all
 
+  # 3e — Chia reference client, CLI package (official APT; see docs.chia.net installation guide)
+  apt-get install -y ca-certificates curl gnupg
+  curl -sL https://repo.chia.net/FD39E6D3.pubkey.asc | gpg --dearmor -o /usr/share/keyrings/chia.gpg
+  echo "deb [arch=\$(dpkg --print-architecture) signed-by=/usr/share/keyrings/chia.gpg] https://repo.chia.net/debian/ stable main" > /etc/apt/sources.list.d/chia.list
+  apt-get update
+  apt-get install -y chia-blockchain-cli
+
 Order: install .deb packages before assuming /lib/modules matches anything from
 uname -r in this shell (uname -r may still reflect the host kernel Cubic used).
 
@@ -161,6 +169,7 @@ Verify:
   ls /boot/vmlinuz-*
   ls /lib/modules/
   dpkg -l | grep -E '^ii\\s+linux-(image|modules)-'
+  dpkg -l | grep -E '^ii\\s+chia-blockchain-cli'
 
 4. After leaving the chroot
 ---------------------------
@@ -201,7 +210,14 @@ chmod 0777 /.chiaplots
 # 3d — initramfs
 update-initramfs -u -k all
 
-echo "Done. Verify: ls /boot/vmlinuz-* /lib/modules/ ; exit chroot and finish Cubic."
+# 3e — Chia official APT, chia-blockchain-cli (https://docs.chia.net/reference-client/install-and-setup/installation/)
+apt-get install -y ca-certificates curl gnupg
+curl -sL https://repo.chia.net/FD39E6D3.pubkey.asc | gpg --dearmor -o /usr/share/keyrings/chia.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/chia.gpg] https://repo.chia.net/debian/ stable main" > /etc/apt/sources.list.d/chia.list
+apt-get update
+apt-get install -y chia-blockchain-cli
+
+echo "Done. Verify: ls /boot/vmlinuz-* /lib/modules/ ; dpkg -l | grep chia-blockchain-cli ; exit chroot and finish Cubic."
 EOF
 chmod a+rX "${OUT}/chroot-commands.example.sh"
 

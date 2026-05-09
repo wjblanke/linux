@@ -16,7 +16,7 @@ Optional behavior for a directory named **`.chiaplots`** at the **filesystem roo
 | **Diagnostics** | **`pr_warn_ratelimited("ext4 chiaplots[%s]: …")`** around eviction / **`try_make_space`** / **`force_evict`**. Includes **`evict:`** lines for lookup, **`dentry_open`**, empty directory, no regular file, **`vfs_unlink`**, and race cases (**`.chiaplots` gone before unlink**, **victim missing before unlink**). Use **`dmesg`** / **`journalctl -k`** (grep **`chiaplots`**). Messages are **ratelimited**; bursts may be suppressed. |
 | **Userland: `makeplots.sh`** | Repo root (POSIX **`sh`**): batch-fill staging; stop when **`df` avail** on the staging volume **minus** the recursive byte sum of **all regular files** under **`CHIAPLOTS`** (default **`/.chiaplots`**) is **≤ `MIN_FREE_GIB` GiB** (default **1**); then **`mv`** into **`/.chiaplots`**. See **Userland: `makeplots.sh`** below. |
 | **Userland: `plotpoll.sh`** | Repo root (**bash**): loop when the same **metric** exceeds a threshold; see **Userland: `plotpoll.sh`** below. |
-| **Minimal distribution** | **`scripts/prepare-chiaplots-cubic.sh`** stages **`plotpoll.sh`** and a **Cubic** how-to; install **kernel `.deb`** packages (e.g. **`fakeroot make bindeb-pkg`**) inside **Cubic**’s chroot, add **`/.chiaplots`**, install **`chia-blockchain`** from **Chia’s official APT repo**, then finish the **Cubic** wizard. See **Minimal Ubuntu distribution (Cubic)** below. |
+| **Minimal distribution** | **`scripts/prepare-chiaplots-cubic.sh`** stages **`plotpoll.sh`** and a **Cubic** how-to; install **kernel `.deb`** packages (e.g. **`fakeroot make bindeb-pkg`**) inside **Cubic**’s chroot, add **`/.chiaplots`**, install **`chia-blockchain-cli`** from **Chia’s official APT repo**, then finish the **Cubic** wizard. See **Minimal Ubuntu distribution (Cubic)** below. |
 
 ---
 
@@ -59,7 +59,7 @@ To tune headroom, edit **`CHIAPLOTS_MARGIN_BYTES`** in **`fs/ext4/chiaplots.c`**
 | **`fs/ext4/ext4.h`** | Declarations for chiaplots helpers and **`ext4_has_free_clusters()`**. |
 | **`fs/ext4/Makefile`** | **`chiaplots.o`**. |
 | **`makeplots.sh`** / **`plotpoll.sh`** | Repository root — batch vs periodic userland helpers; see **Userland** sections. |
-| **`scripts/prepare-chiaplots-cubic.sh`** | Stages **`plotpoll.sh`** plus **README** / example chroot commands for **Cubic** (custom kernel **`bindeb-pkg`**, **`/.chiaplots`**, **`chia-blockchain`** from **repo.chia.net**); see **Minimal Ubuntu distribution (Cubic)**. |
+| **`scripts/prepare-chiaplots-cubic.sh`** | Stages **`plotpoll.sh`** plus **README** / example chroot commands for **Cubic** (custom kernel **`bindeb-pkg`**, **`/.chiaplots`**, **`chia-blockchain-cli`** from **repo.chia.net**); see **Minimal Ubuntu distribution (Cubic)**. |
 
 ---
 
@@ -215,7 +215,7 @@ This fork does not drive Cubic from the command line. Use **`scripts/prepare-chi
 - **Kernel tree:** Configured and built far enough that **`fakeroot make bindeb-pkg`** succeeds (full kernel build dependencies, **`fakeroot`**).
 - **Base ISO:** Official Ubuntu image whose **architecture** matches your kernel (**`amd64`** vs **`arm64`**). Prefer the **same release family** as the chroot (e.g. **Noble** ISO for a **noble** userspace) so library versions stay sane.
 - **`plotpoll.sh`** at the kernel repository root (or pass that tree as **`LINUX_SRC`** to the staging script).
-- **Network in the Cubic chroot:** Adding **`chia-blockchain`** uses **`curl`** and **`apt`** against **`repo.chia.net`**; the chroot session normally has outbound connectivity from the host. If **`apt`** or **`curl`** fails, fix DNS/routing before relying on the Chia step.
+- **Network in the Cubic chroot:** Adding **`chia-blockchain-cli`** uses **`curl`** and **`apt`** against **`repo.chia.net`**; the chroot session normally has outbound connectivity from the host. If **`apt`** or **`curl`** fails, fix DNS/routing before relying on the Chia step.
 
 ### Install Cubic (on the host that runs the wizard)
 
@@ -291,14 +291,13 @@ chmod 0777 /.chiaplots
 # 3d — Initramfs for the new kernel (usually run by postinst; safe to repeat).
 update-initramfs -u -k all
 
-# 3e — Chia Network reference client (official APT; same steps as Chia docs, without sudo).
+# 3e — Chia Network reference client, CLI package (official APT; same steps as Chia docs, without sudo).
 #     https://docs.chia.net/reference-client/install-and-setup/installation/
 apt-get install -y ca-certificates curl gnupg
 curl -sL https://repo.chia.net/FD39E6D3.pubkey.asc | gpg --dearmor -o /usr/share/keyrings/chia.gpg
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/chia.gpg] https://repo.chia.net/debian/ stable main" > /etc/apt/sources.list.d/chia.list
 apt-get update
-apt-get install -y chia-blockchain
-# Headless / CLI-only systems: use chia-blockchain-cli instead of chia-blockchain.
+apt-get install -y chia-blockchain-cli
 ```
 
 **Order matters:** install **`.deb`** packages **before** relying on **`/lib/modules/$(uname -r)`** in the chroot ( **`uname -r`** in the chroot still reflects the **host** kernel Cubic used to enter the environment—ignore it for naming). After installation, confirm the new kernel and modules are on disk:
@@ -307,7 +306,7 @@ apt-get install -y chia-blockchain
 ls /boot/vmlinuz-*
 ls /lib/modules/
 dpkg -l | grep -E '^ii\s+linux-(image|modules)-'
-dpkg -l | grep -E '^ii\s+chia-blockchain'
+dpkg -l | grep -E '^ii\s+chia-blockchain-cli'
 ```
 
 ### 4. After you leave the chroot
@@ -320,7 +319,7 @@ Ubuntu **live** sessions use **casper** and an **overlay**; **`/`** is not a pla
 
 ### Reference: staged helper script
 
-**`scripts/prepare-chiaplots-cubic.sh`** writes **`README.txt`** (same flow as this section, in plain text) and **`chroot-commands.example.sh`** next to **`plotpoll.sh`**. The example script mirrors **§3** (kernel, **`plotpoll.sh`**, **`/.chiaplots`**, **`chia-blockchain`**) for a **`$STAGING`** layout; adjust paths if your copies land somewhere other than **`/tmp/chiaplots-staging`**.
+**`scripts/prepare-chiaplots-cubic.sh`** writes **`README.txt`** (same flow as this section, in plain text) and **`chroot-commands.example.sh`** next to **`plotpoll.sh`**. The example script mirrors **§3** (kernel, **`plotpoll.sh`**, **`/.chiaplots`**, **`chia-blockchain-cli`**) for a **`$STAGING`** layout; adjust paths if your copies land somewhere other than **`/tmp/chiaplots-staging`**.
 
 ---
 
