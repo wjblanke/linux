@@ -16,6 +16,7 @@ Optional behavior for a directory named **`.chiaplots`** at the **filesystem roo
 | **Diagnostics** | **`pr_warn_ratelimited("ext4 chiaplots[%s]: …")`** around eviction / **`try_make_space`** / **`force_evict`**. Includes **`evict:`** lines for lookup, **`dentry_open`**, empty directory, no regular file, **`vfs_unlink`**, and race cases (**`.chiaplots` gone before unlink**, **victim missing before unlink**). Use **`dmesg`** / **`journalctl -k`** (grep **`chiaplots`**). Messages are **ratelimited**; bursts may be suppressed. |
 | **Userland: `makeplots.sh`** | Repo root (POSIX **`sh`**): batch-fill staging; stop when **`df` avail** on the staging volume **minus** the recursive byte sum of **all regular files** under **`CHIAPLOTS`** (default **`/.chiaplots`**) is **≤ `MIN_FREE_GIB` GiB** (default **1**); then **`mv`** into **`/.chiaplots`**. See **Userland: `makeplots.sh`** below. |
 | **Userland: `plotpoll.sh`** | Repo root (**bash**): loop when the same **metric** exceeds a threshold; see **Userland: `plotpoll.sh`** below. |
+| **Minimal distribution** | **`scripts/create-minimal-ubuntu-rootfs.sh`**: **`debootstrap`** minbase Ubuntu rootfs, install this tree’s kernel + modules + initramfs, copy **`plotpoll.sh`** to **`/usr/local/bin`**, pre-create **`/.chiaplots`** (**0777**). Produces a **`.tar.gz`**. See **Minimal Ubuntu distribution** below. |
 
 ---
 
@@ -58,6 +59,7 @@ To tune headroom, edit **`CHIAPLOTS_MARGIN_BYTES`** in **`fs/ext4/chiaplots.c`**
 | **`fs/ext4/ext4.h`** | Declarations for chiaplots helpers and **`ext4_has_free_clusters()`**. |
 | **`fs/ext4/Makefile`** | **`chiaplots.o`**. |
 | **`makeplots.sh`** / **`plotpoll.sh`** | Repository root — batch vs periodic userland helpers; see **Userland** sections. |
+| **`scripts/create-minimal-ubuntu-rootfs.sh`** | Builds a minimal Ubuntu rootfs tarball with this kernel, **`plotpoll.sh`**, and **`/.chiaplots`**; see **Minimal Ubuntu distribution**. |
 
 ---
 
@@ -98,7 +100,7 @@ That matches how **`chiaplots`** adjusts **`statfs`**: **`df`** reports inflated
 | Script | Interpreter | Role |
 |--------|-------------|------|
 | **`makeplots.sh`** | POSIX **`sh`** | One-shot: fill staging until **`metric ≤ MIN_FREE_GIB` GiB**, then **`mv`** into **`/.chiaplots`**. |
-| **`plotpoll.sh`** | **bash** | Loop every **`INTERVAL_SEC`**: when **`metric > THRESHOLD_MB × 1 MiB`** (byte threshold), **`dd`** in **`/tmp`** then **`mv`** into **`/.chiaplots`**. |
+| **`plotpoll.sh`** | **bash** | When **`metric > THRESHOLD_MB × 1 MiB`**, **`dd`** in **`/tmp`** then **`mv`** into **`/.chiaplots`** (tight loop while room exists); otherwise sleep **`INTERVAL_SEC`** (default **10** s). |
 
 ---
 
@@ -198,6 +200,66 @@ uname -r
 ```
 
 Confirm it matches the kernel you built before testing chiaplots behavior.
+
+---
+
+## Minimal Ubuntu distribution
+
+The script **`scripts/create-minimal-ubuntu-rootfs.sh`** packages a **small Ubuntu userland** ( **`debootstrap --variant=minbase`**, **`main`** only) together with **your built kernel** from this tree: **`vmlinuz`**, **`modules_install`** into **`/lib/modules/$(kernelrelease)`**, and **`update-initramfs`** inside the chroot. It is meant for **VMs / QEMU / custom images** where the root filesystem is **ext4** and you want **`plotpoll`** and **`/.chiaplots`** ready without hand-assembling a rootfs.
+
+### What ends up in the image
+
+| Item | Location / notes |
+|------|-------------------|
+| Custom kernel | **`/boot/vmlinuz-<kernelrelease>`** (from **`arch/x86/boot/bzImage`** or **`arch/arm64/boot/Image`**) |
+| Modules + initramfs | **`/lib/modules/<kernelrelease>/`**, **`/boot/initrd.img-<kernelrelease>`** |
+| **`plotpoll.sh`** | **`/usr/local/bin/plotpoll.sh`** (copy of repository root **`plotpoll.sh`**; file must exist in the tree) |
+| **`/.chiaplots`** | Pre-created with mode **0777** (permissive for tests; tighten for production) |
+| Tarball | **`OUTPUT_DIR/minimal-ubuntu-<release>-<kernelrelease>-<arch>.tar.gz`** |
+
+The script also writes **`OUTPUT_DIR/README.txt`** and leaves an unpacked **`OUTPUT_DIR/rootfs/`**.
+
+### Prerequisites
+
+1. **Configure and build** this kernel for the target architecture (e.g. **`make -j"$(nproc)"`** so **`arch/.../bzImage`** or **`Image`** exists, and modules build).
+2. **Host:** Ubuntu or Debian with **`debootstrap`**, run as **root** (**`sudo`**). On **macOS**, run inside a **privileged** Ubuntu container with the repo bind-mounted (example below).
+3. Repository root must contain **`plotpoll.sh`** (the script fails if it is missing).
+
+### Create the distribution
+
+From the repository root (after a successful kernel build):
+
+```bash
+sudo apt-get install -y debootstrap   # on the build host, if needed
+sudo ./scripts/create-minimal-ubuntu-rootfs.sh . /path/to/output-dir
+```
+
+Arguments: **`[LINUX_SRC]`** (default **`.`**), **`[OUTPUT_DIR]`** (default **`./minimal-ubuntu-rootfs`** under the resolved path). **`LINUX_SRC`** must be the kernel tree containing **`Makefile`**, **`plotpoll.sh`**, and the built image.
+
+**Environment (optional):**
+
+| Variable | Meaning |
+|----------|---------|
+| **`RELEASE`** | Ubuntu codename (default **`noble`**) |
+| **`ARCH`** | **`debootstrap`** arch: host **`uname -m`** mapped to **`amd64`** / **`arm64`** / **`armhf`**, or set explicitly |
+| **`APT_MIRROR`** | Override archive URL (defaults differ for **ports** vs **archive.ubuntu.com**) |
+| **`EXTRA_PKGS`** | Extra **`apt`** packages (space-separated), e.g. **`openssh-server`** |
+| **`SKIP_DEBOOTSTRAP=1`** | Skip **`debootstrap`**; only reinstall kernel + **`plotpoll`** + **`/.chiaplots`** into existing **`OUTPUT_DIR/rootfs`** |
+
+### Docker (e.g. macOS host)
+
+```bash
+docker run --rm -it --privileged -v "$PWD":/src ubuntu:noble bash
+apt-get update && apt-get install -y debootstrap
+cd /src && make -j"$(nproc)"    # build kernel inside container if needed
+sudo /src/scripts/create-minimal-ubuntu-rootfs.sh /src /tmp/chiaplots-image
+```
+
+Cross-architecture rootfs (e.g. **arm64** image on **amd64**) needs **`qemu-user-static`** / **`binfmt`** on the host; the script does not set that up automatically.
+
+### Booting
+
+The tarball is a **rootfs only** (no partition table, no GRUB in the script). Point **QEMU**, **libvirt**, or a disk image workflow at **`vmlinuz` + `initrd.img`** and the unpacked root, or install a bootloader yourself. Root must be **ext4** with this kernel for **chiaplots** rules to apply.
 
 ---
 
