@@ -205,48 +205,111 @@ Confirm it matches the kernel you built before testing chiaplots behavior.
 
 ## Minimal Ubuntu distribution (Cubic)
 
-**[Cubic](https://github.com/PJ-Singh-001/Cubic)** (Custom Ubuntu ISO Creator) is the supported way here to remix an official Ubuntu **`.iso`**: graphical project wizard, chroot terminal for packages and files, then regenerated ISO output.
+**[Cubic](https://github.com/PJ-Singh-001/Cubic)** (Custom Ubuntu ISO Creator) remixes an official Ubuntu **`.iso`**: you pick a base image and a project directory, Cubic extracts the live filesystem, you customize it in a **root shell inside that tree**, then Cubic repacks a new **`.iso`**.
 
-This repository does **not** wrap Cubic in automation (upstream is GUI-first). Use **`scripts/prepare-chiaplots-cubic.sh`** to stage **`plotpoll.sh`** and a short **`README.txt`** / **`chroot-commands.example.sh`** next to your Cubic work.
-
-### Kernel packages for the chroot
-
-Inside Cubic’s environment, install this tree as normal **Debian kernel packages** (modules included), not a raw **`vmlinuz`** copy:
-
-```bash
-cd /path/to/linux
-fakeroot make -j"$(nproc)" bindeb-pkg
-```
-
-Packages are written to the **parent directory** of the kernel source. Copy **`linux-image-*.deb`** and **`linux-modules-*.deb`** into the Cubic chroot (e.g. **`/tmp`**) and install with **`apt install -y ./linux-image-*.deb ./linux-modules-*.deb`** (or **`dpkg -i`** then **`apt -f install`**).
-
-Optional: **`RUN_BINDEB=1 OUTPUT_BINDEB_COPY=1 ./scripts/prepare-chiaplots-cubic.sh . ./staging`** runs **`bindeb-pkg`** and copies matching **`linux-image` / `linux-modules`** **`.deb`** files into **`./staging`** (slow; requires full **`.deb`** build dependencies).
-
-### Stage helper and Cubic install
-
-```bash
-./scripts/prepare-chiaplots-cubic.sh . /path/to/staging-dir
-```
-
-On Ubuntu, install Cubic (see **`staging-dir/README.txt`** for the current PPA pattern: **`ppa:cubic-wizard/release`**).
-
-### What you add in the Cubic chroot
-
-| Step | Action |
-|------|--------|
-| Kernel | Install **`linux-image-*.deb`** / **`linux-modules-*.deb`** from **`bindeb-pkg`**, then **`update-initramfs -u -k all`** if needed. |
-| **`plotpoll.sh`** | **`install -m 0755 …/plotpoll.sh /usr/local/bin/plotpoll.sh`** |
-| **`/.chiaplots`** | **`mkdir -p /.chiaplots && chmod 0777 /.chiaplots`** |
-
-### Live session vs installed system
-
-Ubuntu **live** images use **casper** and an **overlay**; that is not the same as a long-term **ext4** root. **chiaplots** behavior that depends on **`/`** being the real **ext4** superblock is best validated **after installing** the customized system to a disk (or on any normal **ext4** root), not only on the live desktop.
+This fork does not drive Cubic from the command line. Use **`scripts/prepare-chiaplots-cubic.sh`** only to collect **`plotpoll.sh`** (and optionally **`linux-image-*.deb` / `linux-modules-*.deb`**) plus a small **`README.txt`** on the machine where you build the kernel.
 
 ### Prerequisites
 
-1. **Configure and build** this kernel tree enough to produce **`bindeb-pkg`** (install your distro’s kernel build dependencies, including **`fakeroot`** for **`bindeb-pkg`**).
-2. **Host:** Ubuntu with **Cubic** and enough disk space for the ISO project.
-3. **`plotpoll.sh`** at the repository root (same as **`LINUX_SRC`** when **`LINUX_SRC`** is **`.`**).
+- **Build host:** Ubuntu (or derivative) where Cubic runs, with enough disk and RAM for extraction + ISO generation.
+- **Kernel tree:** Configured and built far enough that **`fakeroot make bindeb-pkg`** succeeds (full kernel build dependencies, **`fakeroot`**).
+- **Base ISO:** Official Ubuntu image whose **architecture** matches your kernel (**`amd64`** vs **`arm64`**). Prefer the **same release family** as the chroot (e.g. **Noble** ISO for a **noble** userspace) so library versions stay sane.
+- **`plotpoll.sh`** at the kernel repository root (or pass that tree as **`LINUX_SRC`** to the staging script).
+
+### Install Cubic (on the host that runs the wizard)
+
+```bash
+sudo apt-add-repository universe
+sudo apt-add-repository ppa:cubic-wizard/release
+sudo apt update
+sudo apt install cubic
+```
+
+### 1. Build kernel Debian packages (on the kernel build host)
+
+From your **linux** source tree (the fork with **chiaplots**):
+
+```bash
+cd /path/to/linux
+# Tree must be configured (e.g. defconfig / copied .config). bindeb-pkg builds the
+# kernel and modules if they are not already up to date, then produces the .deb files.
+fakeroot make -j"$(nproc)" bindeb-pkg
+```
+
+**`bindeb-pkg`** writes **`linux-image-*.deb`**, **`linux-modules-*.deb`**, and usually **`linux-headers-*.deb`** into the **parent directory of the kernel tree** (not inside **`linux/`**). You only **need** **`linux-image`** and **`linux-modules`** for a bootable system; headers are optional (tooling / out-of-tree modules).
+
+Collect them into one folder (example names will differ by **`uname -r`** / package revision):
+
+```bash
+mkdir -p ~/chiaplots-cubic-staging
+cp -v /path/to/parent-of-linux/linux-image-*.deb /path/to/parent-of-linux/linux-modules-*.deb ~/chiaplots-cubic-staging/
+```
+
+Or let the repo helper copy **`plotpoll.sh`** (and optionally build + copy **`.deb`** files):
+
+```bash
+./scripts/prepare-chiaplots-cubic.sh /path/to/linux ~/chiaplots-cubic-staging
+# Optional: also run bindeb-pkg and copy image + modules debs into the same folder:
+# RUN_BINDEB=1 OUTPUT_BINDEB_COPY=1 ./scripts/prepare-chiaplots-cubic.sh /path/to/linux ~/chiaplots-cubic-staging
+```
+
+### 2. Cubic wizard (graphical)
+
+Work through Cubic’s pages in order; wording varies slightly by Cubic version, but the flow is:
+
+1. **Original ISO** — Select the official Ubuntu **`.iso`** you are customizing.
+2. **Project directory** — Choose an **empty** dedicated folder (avoid names that look like **`20.04.3-4`**-style version strings; some Cubic versions mishandle them).
+3. **Extract** — Wait for extraction to finish.
+4. **Terminal** (sometimes labeled **Chroot** / **Virtual environment**) — This is where you run the commands in **§3** below. You are **root** in the extracted system; **`sudo`** is not required.
+5. Later pages (**Boot**, **Compression**, etc.) — Use Cubic’s defaults unless you have a reason to change them.
+6. **Generate** — Produce the final **`.iso`**.
+
+**Getting files into the chroot:** The Terminal runs inside the customized root filesystem. Copy **`~/chiaplots-cubic-staging/*`** from the **host** into that filesystem using whatever path Cubic exposes (many users open the **project directory** in a file manager or second terminal on the host and copy into the subdirectory Cubic lists as the custom root—see Cubic’s UI text for the exact path). Common pattern: copy everything into **`/tmp/chiaplots-staging/`** inside the chroot, then run **§3** from there.
+
+### 3. Chroot terminal: custom kernel, `plotpoll.sh`, and `/.chiaplots`
+
+Run these **inside Cubic’s root shell**, after **`linux-image-*.deb`**, **`linux-modules-*.deb`**, and **`plotpoll.sh`** exist at a single path (here **`/tmp/chiaplots-staging/`**):
+
+```bash
+STAGING=/tmp/chiaplots-staging
+cd "$STAGING"
+
+# 3a — Install the kernel packages (pulls in dependencies from configured repos).
+apt update
+apt install -y ./linux-image-*.deb ./linux-modules-*.deb
+# If apt complains about dependencies:
+#   apt-get install -f -y
+
+# 3b — Install plotpoll helper (repo script; same content as staging).
+install -m 0755 ./plotpoll.sh /usr/local/bin/plotpoll.sh
+
+# 3c — Root-level plot directory (kernel does not create this; userland must).
+mkdir -p /.chiaplots
+chmod 0777 /.chiaplots
+
+# 3d — Initramfs for the new kernel (usually run by postinst; safe to repeat).
+update-initramfs -u -k all
+```
+
+**Order matters:** install **`.deb`** packages **before** relying on **`/lib/modules/$(uname -r)`** in the chroot ( **`uname -r`** in the chroot still reflects the **host** kernel Cubic used to enter the environment—ignore it for naming). After installation, confirm the new kernel and modules are on disk:
+
+```bash
+ls /boot/vmlinuz-*
+ls /lib/modules/
+dpkg -l | grep -E '^ii\s+linux-(image|modules)-'
+```
+
+### 4. After you leave the chroot
+
+Complete the remaining Cubic steps and generate the **`.iso`**. On first boot from that image, pick your custom kernel in the boot menu if more than one entry appears, then **`uname -r`** should match the version from **`bindeb-pkg`**.
+
+### Live session vs installed disk
+
+Ubuntu **live** sessions use **casper** and an **overlay**; **`/`** is not a plain long-lived **ext4** root the way an installed system is. For **chiaplots** semantics that depend on the **ext4** superblock for **`/`**, validate on **installed** disk (or any normal **ext4** root), not only on the live desktop.
+
+### Reference: staged helper script
+
+**`scripts/prepare-chiaplots-cubic.sh`** writes **`README.txt`** (same flow as this section, in plain text) and **`chroot-commands.example.sh`** next to **`plotpoll.sh`**. The example script mirrors **§3** for a **`$STAGING`** layout; adjust paths if your copies land somewhere other than **`/tmp/chiaplots-staging`**.
 
 ---
 
