@@ -218,7 +218,7 @@ After boot, the live root is typically an **overlay** on top of the squashfs; us
 | **ISO build tree** | **`OUTPUT_DIR/isostage/`** (**`casper/`**, **`boot/grub/`**, **`.disk/`**) |
 | Inside squashfs | **`/boot/vmlinuz-*`**, **`/lib/modules/`**, **`/usr/local/bin/plotpoll.sh`**, **`/.chiaplots`** (**0777**) |
 
-The script writes **`OUTPUT_DIR/README.txt`**. It runs **`apt-get`** on the **build host** to install **`squashfs-tools`**, **`xorriso`**, and **GRUB** packages needed for **`grub-mkrescue`**.
+The script writes **`OUTPUT_DIR/README.txt`**. It runs **`apt-get`** on the **build host** to install **`squashfs-tools`**, **`xorriso`**, **`mtools`**, and **GRUB** packages needed for **`grub-mkrescue`**.
 
 ### Prerequisites
 
@@ -244,34 +244,6 @@ Arguments: **`[LINUX_SRC]`** (default **`.`**), **`[OUTPUT_DIR]`** (default **`.
 | **`APT_MIRROR`** | Override archive URL |
 | **`EXTRA_PKGS`** | Extra **`apt`** packages in the chroot (space-separated) |
 | **`SKIP_DEBOOTSTRAP=1`** | Reuse existing **`OUTPUT_DIR/rootfs`**; still reinstalls kernel, **casper**, squashfs, and ISO |
-
-### Docker on macOS
-
-Use **Docker Desktop** or **Colima**, **privileged** container, and bind-mount the repo plus an output directory. The container must reach the network for **`debootstrap`**, **`apt`** (including **`casper`**), and host **`apt-get`** for **xorriso** / **GRUB**.
-
-```bash
-mkdir -p docker-out
-docker run --rm -it --privileged \
-  -v "$PWD":/src -v "$PWD/docker-out":/out \
-  ubuntu:noble bash
-apt-get update
-apt-get install -y debootstrap build-essential libncurses-dev bison flex \
-  libssl-dev libelf-dev libdw-dev gawk bc cpio
-cd /src && test -f .config || make defconfig && make -j"$(nproc)"
-./scripts/create-minimal-ubuntu-iso.sh /src /out
-```
-
-The **`.iso`** appears under **`./docker-out/`** on the Mac. **Apple Silicon** builds an **arm64** ISO; **Intel** builds **amd64**.
-
-### Booting
-
-**QEMU (amd64):**
-
-```bash
-qemu-system-x86_64 -m 2G -cdrom minimal-ubuntu-*.iso -boot d
-```
-
-**chiaplots** applies when the workload’s root (or test data) is on **ext4** with this kernel; the **live overlay** root may differ from a bare **ext4** install—use a dedicated **ext4** disk or image for strict filesystem-level tests if needed.
 
 ---
 
