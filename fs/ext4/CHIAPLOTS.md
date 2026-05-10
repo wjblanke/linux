@@ -100,7 +100,7 @@ That matches how **`chiaplots`** adjusts **`statfs`**: **`df`** reports inflated
 | Script | Interpreter | Role |
 |--------|-------------|------|
 | **`makeplots.sh`** | POSIX **`sh`** | One-shot: fill staging until **`metric ≤ MIN_FREE_GIB` GiB**, then **`mv`** into **`/.chiaplots`**. |
-| **`plotpoll.sh`** | **bash** | When **`metric > THRESHOLD_MB × 1 MiB`**, **`dd`** in **`/tmp`** then **`mv`** into **`/.chiaplots`** (tight loop while room exists); otherwise sleep **`INTERVAL_SEC`** (default **10** s). |
+| **`plotpoll.sh`** | **bash** | When **`metric > THRESHOLD_MB × 1 MiB`**, tries **`chia plotters chiapos`** for a **k25** plot in **`TMPDIR`**, then **`mv`** the **`.plot`** into **`/.chiaplots`**; on failure **`dd`** **`FILE_MB`** MiB then **`mv`** (default **50** MiB **`.bin`**). Otherwise sleep **`INTERVAL_SEC`** (default **10** s). |
 
 ---
 
@@ -137,9 +137,9 @@ Repository root **`plotpoll.sh`** is a **bash** loop for exercising chiaplots fr
   - **`df -B1`** on that path → available bytes on the mount.
   - **`find`** sums byte sizes of **all regular files** under **`CHIAPLOTS_DIR`** (any depth).
   - **Metric** = `df_avail - plot_bytes` (same definition as **`makeplots.sh`**).
-  - If **metric > `THRESHOLD_MB` × 1024²** bytes (default **`THRESHOLD_MB=1100`** → **1100 MiB**), allocates **`FILE_MB`** MiB (default **50**) with **`dd`** into **`mktemp /tmp/plotpoll.XXXXXX`**, then **`mv`** to **`CHIAPLOTS_DIR/auto_<epoch>_<pid>.bin`**. Successful creates print a timestamped `plotpoll:` line; **`dd`/`mv`** failures go to stderr.
+  - If **metric > `THRESHOLD_MB` × 1024²** bytes (default **`THRESHOLD_MB=1100`** → **1100 MiB**), first runs **`chia plotters chiapos -k 25 --override-k`** (default **k**; see **`CHIA_PLOT_K`**) in a **`mktemp`** directory under **`TMPDIR`**, then **`mv`** the finished **`.plot`** to **`CHIAPLOTS_DIR/auto_<epoch>_<pid>_<seq>_k25.plot`**. If **`chia`** is missing, keys are unavailable, plotting fails, or **`mv`** fails, it falls back to **`FILE_MB`** MiB (default **50**) with **`dd`** into **`mktemp`** and **`mv`** to **`…/auto_….bin`**. Successful creates print a timestamped **`plotpoll:`** line; failures print a short reason before fallback.
 
-**Environment overrides:** `CHIAPLOTS_DIR`, `INTERVAL_SEC`, `THRESHOLD_MB`, `FILE_MB` (see script header).
+**Environment overrides:** `CHIAPLOTS_DIR`, `INTERVAL_SEC`, `THRESHOLD_MB`, `FILE_MB`, `CHIA_PLOT_K`, `CHIA_BUFFER_MB`, `PLOTPOLL_CHIA` (set **`0`** to skip Chia and only **`dd`**) — see script header.
 
 **Run:** `sudo ./plotpoll.sh` from the repo root (or `bash /path/to/plotpoll.sh`). Requires **bash**; the script re-execs under bash if invoked as **`sh`**.
 
