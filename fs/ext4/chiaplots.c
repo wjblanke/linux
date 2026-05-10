@@ -294,6 +294,8 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 	if (!d_is_positive(chi) || !d_is_dir(chi)) {
 		dput(chi);
 		err = -ENOENT;
+		chi_dbg(sb,
+			"evict: .chiaplots gone before unlink (race or unmount)\n");
 		goto out_drop_write;
 	}
 
@@ -312,6 +314,8 @@ static int ext4_chiaplots_evict_one(struct super_block *sb)
 		inode_unlock(chi->d_inode);
 		dput(chi);
 		err = -ENOENT;
+		chi_dbg(sb, "evict: victim '%s' missing before unlink (race)\n",
+			nctx->names[best]);
 		goto out_drop_write;
 	}
 
