@@ -8,17 +8,17 @@
 # If /tmp is another filesystem (e.g. tmpfs), mv may copy+create and still hit EPERM;
 # then set TMPDIR to a dir on the ext4 volume or use a same-fs staging path.
 #
-# Requires root (or write access to /.chiaplots) to create files there.
+# Requires write access to CHIAPLOTS_DIR (default /.chiaplots) to create files there.
 # Chia path: needs `chia` on PATH, a usable key (chia keys show), and enough RAM/disk
 # for plotting (see CHIA_BUFFER_MB). On any failure, falls back to dd.
 #
 # Environment (optional):
 #   CHIAPLOTS_DIR   default /.chiaplots
 #   INTERVAL_SEC    default 10
-#   THRESHOLD_MB    default 2048  (mebibytes: 2 GiB headroom; metric must exceed this)
+#   THRESHOLD_MB    default 3072  (mebibytes: 3 GiB headroom; metric must exceed this)
 #   FILE_MB         default 50    (mebibytes per dd fallback file)
 #   CHIA_PLOT_K     default 25    (k size for chia plotters chiapos; use --override-k if k < 32)
-#   CHIA_BUFFER_MB  default 512   (chiapos -b buffer; lower if RAM-constrained)
+#   CHIA_BUFFER_MB  default 1024  (chiapos -b buffer MB; ~1 GiB; lower if RAM-constrained)
 #   PLOTPOLL_CHIA   default 1     (set to 0 to skip Chia and only use dd)
 
 # Invoked as `sh plotpoll.sh` or from a non-bash sh: re-exec so [[, ((, local work.
@@ -30,10 +30,10 @@ set -u
 
 CHIAPLOTS_DIR="${CHIAPLOTS_DIR:-/.chiaplots}"
 INTERVAL_SEC="${INTERVAL_SEC:-10}"
-THRESHOLD_MB="${THRESHOLD_MB:-2048}"
+THRESHOLD_MB="${THRESHOLD_MB:-3072}"
 FILE_MB="${FILE_MB:-50}"
 CHIA_PLOT_K="${CHIA_PLOT_K:-25}"
-CHIA_BUFFER_MB="${CHIA_BUFFER_MB:-512}"
+CHIA_BUFFER_MB="${CHIA_BUFFER_MB:-1024}"
 PLOTPOLL_CHIA="${PLOTPOLL_CHIA:-1}"
 
 threshold_bytes=$((THRESHOLD_MB * 1024 * 1024))
@@ -60,7 +60,7 @@ try_chia_k_plot() {
 	k="${CHIA_PLOT_K}"
 	[[ "$k" =~ ^[0-9]+$ ]] || return 1
 	buf="${CHIA_BUFFER_MB}"
-	[[ "$buf" =~ ^[0-9]+$ ]] || buf=512
+	[[ "$buf" =~ ^[0-9]+$ ]] || buf=1024
 
 	workdir="$(mktemp -d "${TMPDIR:-/tmp}/plotpoll.chia.XXXXXX")" || return 1
 
@@ -110,7 +110,7 @@ while true; do
 			if ((total > threshold_bytes)); then
 				room_to_create=1
 				if [[ ! -w "$CHIAPLOTS_DIR" ]]; then
-					echo "plotpoll: $CHIAPLOTS_DIR not writable (try: sudo $0)" >&2
+					echo "plotpoll: $CHIAPLOTS_DIR not writable" >&2
 				else
 					create_seq=$((create_seq + 1))
 					if try_chia_k_plot "$CHIAPLOTS_DIR" "$avail_line" "$files_sum" "$total"; then
