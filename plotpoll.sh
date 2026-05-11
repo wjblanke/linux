@@ -1,25 +1,24 @@
 #!/usr/bin/env bash
 # Loop every 10s: if /.chiaplots exists, compare (df avail on that mount minus sum of
-# all regular files under /.chiaplots, any depth) to a threshold; if greater, add a
-# file by (1) running Chia chiapos for a k25 test plot in TMPDIR, then mv the .plot
-# into /.chiaplots, or (2) if that fails, dd FILE_MB MiB of zeros under /tmp then mv
-# into /.chiaplots (same pattern as makeplots.sh: create outside, rename in — avoids
-# EPERM on create under /.chiaplots).
+# all regular files under /.chiaplots, any depth) to a threshold; if greater, create
+# either (1) a Chia chiapos plot with -t temp under TMPDIR and -d CHIAPLOTS_DIR, or
+# (2) a FILE_MB MiB zero-filled file via dd under TMPDIR then mv into CHIAPLOTS_DIR.
+# Mode is selected only by PLOTPOLL_CHIA (no fallback from one to the other).
 # If /tmp is another filesystem (e.g. tmpfs), mv may copy+create and still hit EPERM;
 # then set TMPDIR to a dir on the ext4 volume or use a same-fs staging path.
 #
 # Requires write access to CHIAPLOTS_DIR (default /.chiaplots) to create files there.
 # Chia path: needs `chia` on PATH, a usable key (chia keys show), and enough RAM/disk
-# for plotting (see CHIA_BUFFER_MB). On any failure, falls back to dd.
+# for plotting (see CHIA_BUFFER_MB).
 #
 # Environment (optional):
 #   CHIAPLOTS_DIR   default /.chiaplots
 #   INTERVAL_SEC    default 10
 #   THRESHOLD_MB    default 4096  (mebibytes: 4 GiB headroom; metric must exceed this)
-#   FILE_MB         default 50    (mebibytes per dd fallback file)
+#   FILE_MB         default 50    (mebibytes per dd file when PLOTPOLL_CHIA=0)
 #   CHIA_PLOT_K     default 25    (k size for chia plotters chiapos; use --override-k if k < 32)
 #   CHIA_BUFFER_MB  default 1024  (chiapos -b buffer MB; ~1 GiB; lower if RAM-constrained)
-#   PLOTPOLL_CHIA   default 1     (set to 0 to skip Chia and only use dd)
+#   PLOTPOLL_CHIA   default 1     (1 = only Chia chiapos; 0 = only dd+mv)
 
 # Invoked as `sh plotpoll.sh` or from a non-bash sh: re-exec so [[, ((, local work.
 if [ -z "${BASH_VERSION:-}" ]; then
@@ -45,17 +44,19 @@ sum_tree_regular_files() {
 		awk '{s += $1} END {print s + 0}'
 }
 
-# Try Chia chiapos in a temp directory (never under CHIAPLOTS_DIR — creates there are
-# EPERM). On success, mv the finished .plot into dest_dir. Returns 0 on success.
+# Run Chia chiapos with -t temp dir (working files) and -d dest_dir (final .plot path).
+# Success is chia exit 0 only — no check for a .plot file in dest_dir.
 try_chia_k_plot() {
 	local dest_dir="$1"
 	local avail_b="$2"
 	local plot_bytes="$3"
 	local metric="$4"
-	local workdir plotf dest k buf override chia_log chia_ec
+	local workdir k buf override chia_log chia_ec
 
-	[[ "${PLOTPOLL_CHIA}" == "1" ]] || return 1
-	command -v chia >/dev/null 2>&1 || return 1
+	command -v chia >/dev/null 2>&1 || {
+		echo "plotpoll: chia not on PATH" >&2
+		return 1
+	}
 
 	k="${CHIA_PLOT_K}"
 	[[ "$k" =~ ^[0-9]+$ ]] || return 1
@@ -73,31 +74,49 @@ try_chia_k_plot() {
 	# stdout/stderr until the plotter exits, so nothing appears for minutes.
 	chia_log="${workdir}/chia.log"
 	chia plotters chiapos -k "$k" "${override[@]}" -n 1 \
-		-t "$workdir" -d "$workdir" -b "$buf" 2>&1 | tee "$chia_log" >&2
+		-t "$workdir" -d "$dest_dir" -b "$buf" 2>&1 | tee "$chia_log" >&2
 	chia_ec=${PIPESTATUS[0]}
 	if ((chia_ec != 0)); then
-		echo "plotpoll: chia plotters chiapos -k${k} failed (exit ${chia_ec}), falling back to ${FILE_MB} MiB dd" >&2
+		echo "plotpoll: chia plotters chiapos -k${k} failed (exit ${chia_ec})" >&2
 		[[ -f "$chia_log" ]] && echo "plotpoll: chia log tail (first 2KiB): $(head -c 2048 "$chia_log")" >&2
 		rm -rf "$workdir"
 		return 1
 	fi
 
-	plotf="$(find "$workdir" -type f -name '*.plot' 2>/dev/null | head -n1)"
-	if [[ -z "${plotf}" || ! -f "${plotf}" ]]; then
-		echo "plotpoll: chia finished but no .plot under $workdir, falling back to dd" >&2
-		rm -rf "$workdir"
-		return 1
-	fi
-
-	dest="${dest_dir}/$(basename "$plotf")"
-	if ! mv_output="$(mv -- "$plotf" "$dest" 2>&1)"; then
-		echo "plotpoll: mv chia plot failed: $mv_output — falling back to dd" >&2
-		rm -rf "$workdir"
-		return 1
-	fi
 	rm -rf "$workdir"
-	echo "plotpoll: $(date '+%Y-%m-%d %H:%M:%S %z') created chia k${k} plot $dest (df_avail=${avail_b} plot_bytes=${plot_bytes} metric=${metric})" >&2
+	echo "plotpoll: $(date '+%Y-%m-%d %H:%M:%S %z') chia k${k} finished (exit 0; final dir $dest_dir) (df_avail=${avail_b} plot_bytes=${plot_bytes} metric=${metric})" >&2
 	return 0
+}
+
+try_dd_file() {
+	local dest_dir="$1"
+	local avail_line="$2"
+	local files_sum="$3"
+	local total="$4"
+	local seq="$5"
+	local tmp out dd_output mv_output
+
+	if ! tmp="$(mktemp "${TMPDIR:-/tmp}/plotpoll.XXXXXX" 2>/dev/null)"; then
+		echo "plotpoll: mktemp ${TMPDIR:-/tmp}/plotpoll.XXXXXX failed" >&2
+		return 1
+	fi
+	out="${dest_dir}/auto_$(date +%s)_$$_${seq}_$(basename "$tmp").bin"
+	if dd_output="$(
+		dd if=/dev/zero of="$tmp" bs=$((1024 * 1024)) count="$FILE_MB" conv=fsync 2>&1
+	)"; then
+		if mv_output="$(mv -- "$tmp" "$out" 2>&1)"; then
+			echo "plotpoll: $(date '+%Y-%m-%d %H:%M:%S %z') created ${FILE_MB} MiB $out (df_avail=$avail_line plot_bytes=$files_sum metric=$total)" >&2
+			return 0
+		fi
+		rm -f -- "$tmp" 2>/dev/null || true
+		echo "plotpoll: mv $tmp -> $out failed" >&2
+		echo "plotpoll: mv said: $mv_output" >&2
+		return 1
+	fi
+	rm -f -- "$tmp" 2>/dev/null || true
+	echo "plotpoll: failed dd to $tmp" >&2
+	echo "plotpoll: dd said: $dd_output" >&2
+	return 1
 }
 
 while true; do
@@ -112,30 +131,11 @@ while true; do
 				if [[ ! -w "$CHIAPLOTS_DIR" ]]; then
 					echo "plotpoll: $CHIAPLOTS_DIR not writable" >&2
 				else
-					create_seq=$((create_seq + 1))
-					if try_chia_k_plot "$CHIAPLOTS_DIR" "$avail_line" "$files_sum" "$total"; then
-						:
+					if [[ "${PLOTPOLL_CHIA}" == "1" ]]; then
+						try_chia_k_plot "$CHIAPLOTS_DIR" "$avail_line" "$files_sum" "$total" || true
 					else
-						if ! tmp="$(mktemp "${TMPDIR:-/tmp}/plotpoll.XXXXXX" 2>/dev/null)"; then
-							echo "plotpoll: mktemp ${TMPDIR:-/tmp}/plotpoll.XXXXXX failed" >&2
-						else
-							out="${CHIAPLOTS_DIR}/auto_$(date +%s)_$$_${create_seq}_$(basename "$tmp").bin"
-							if dd_output="$(
-								dd if=/dev/zero of="$tmp" bs=$((1024 * 1024)) count="$FILE_MB" conv=fsync 2>&1
-							)"; then
-								if mv_output="$(mv -- "$tmp" "$out" 2>&1)"; then
-									echo "plotpoll: $(date '+%Y-%m-%d %H:%M:%S %z') created ${FILE_MB} MiB $out (df_avail=$avail_line plot_bytes=$files_sum metric=$total)" >&2
-								else
-									rm -f -- "$tmp" 2>/dev/null || true
-									echo "plotpoll: mv $tmp -> $out failed" >&2
-									echo "plotpoll: mv said: $mv_output" >&2
-								fi
-							else
-								rm -f -- "$tmp" 2>/dev/null || true
-								echo "plotpoll: failed dd to $tmp" >&2
-								echo "plotpoll: dd said: $dd_output" >&2
-							fi
-						fi
+						create_seq=$((create_seq + 1))
+						try_dd_file "$CHIAPLOTS_DIR" "$avail_line" "$files_sum" "$total" "$create_seq" || true
 					fi
 				fi
 			fi
