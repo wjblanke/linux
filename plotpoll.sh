@@ -49,10 +49,9 @@ sum_tree_regular_files() {
 # EPERM). On success, mv the finished .plot into dest_dir. Returns 0 on success.
 try_chia_k_plot() {
 	local dest_dir="$1"
-	local seq="$2"
-	local avail_b="$3"
-	local plot_bytes="$4"
-	local metric="$5"
+	local avail_b="$2"
+	local plot_bytes="$3"
+	local metric="$4"
 	local workdir plotf dest k buf override chia_log chia_ec
 
 	[[ "${PLOTPOLL_CHIA}" == "1" ]] || return 1
@@ -90,7 +89,7 @@ try_chia_k_plot() {
 		return 1
 	fi
 
-	dest="${dest_dir}/auto_$(date +%s)_$$_${seq}_k${k}.plot"
+	dest="${dest_dir}/$(basename "$plotf")"
 	if ! mv_output="$(mv -- "$plotf" "$dest" 2>&1)"; then
 		echo "plotpoll: mv chia plot failed: $mv_output — falling back to dd" >&2
 		rm -rf "$workdir"
@@ -114,7 +113,7 @@ while true; do
 					echo "plotpoll: $CHIAPLOTS_DIR not writable (try: sudo $0)" >&2
 				else
 					create_seq=$((create_seq + 1))
-					if try_chia_k_plot "$CHIAPLOTS_DIR" "$create_seq" "$avail_line" "$files_sum" "$total"; then
+					if try_chia_k_plot "$CHIAPLOTS_DIR" "$avail_line" "$files_sum" "$total"; then
 						:
 					else
 						if ! tmp="$(mktemp "${TMPDIR:-/tmp}/plotpoll.XXXXXX" 2>/dev/null)"; then
