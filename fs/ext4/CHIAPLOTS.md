@@ -145,6 +145,8 @@ Repository root **`plotpoll.sh`** is a **bash** loop for exercising chiaplots fr
 
 **Note:** If **`/tmp`** is on another filesystem (e.g. **tmpfs**) than **`/.chiaplots`**, **`mv`** may perform copy+create into the plot directory and hit **EPERM** again; use a staging directory on the **same** filesystem as the plot mount (or bind-mount **`/tmp`** appropriately).
 
+**Note:** The script uses POSIX **`df -Pk`** (not GNU-only **`df -B1`**). It sleeps **`INTERVAL_SEC`** after every poll so it cannot tight-spin. If nothing runs, **`metric`** may never exceed **`THRESHOLD_MB`** (default **4 GiB** logical headroom); lower **`THRESHOLD_MB`** or watch for the startup line on stderr.
+
 ---
 
 ## Build Linux from GitHub source

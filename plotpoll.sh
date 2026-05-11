@@ -1,24 +1,20 @@
 #!/usr/bin/env bash
-# Loop every 10s: if /.chiaplots exists, compare (df avail on that mount minus sum of
-# all regular files under /.chiaplots, any depth) to a threshold; if greater, create
-# either (1) a Chia chiapos plot with -t temp under TMPDIR and -d CHIAPLOTS_DIR, or
-# (2) a FILE_MB MiB zero-filled file via dd under TMPDIR then mv into CHIAPLOTS_DIR.
-# Mode is selected only by PLOTPOLL_CHIA (no fallback from one to the other).
-# If /tmp is another filesystem (e.g. tmpfs), mv may copy+create and still hit EPERM;
-# then set TMPDIR to a dir on the ext4 volume or use a same-fs staging path.
+# Loop every INTERVAL_SEC: if CHIAPLOTS_DIR exists, compare (df avail on that mount
+# minus sum of all regular files under CHIAPLOTS_DIR, any depth) to a threshold; if
+# greater, create either (1) Chia chiapos (-t temp, -d CHIAPLOTS_DIR) or (2) dd+mv.
+# Mode is selected only by PLOTPOLL_CHIA (no fallback).
 #
-# Requires write access to CHIAPLOTS_DIR (default /.chiaplots) to create files there.
-# Chia path: needs `chia` on PATH, a usable key (chia keys show), and enough RAM/disk
-# for plotting (see CHIA_BUFFER_MB).
+# Requires write access to CHIAPLOTS_DIR (default /.chiaplots).
+# Uses POSIX df -Pk for available space (not GNU-only df -B1).
 #
 # Environment (optional):
 #   CHIAPLOTS_DIR   default /.chiaplots
 #   INTERVAL_SEC    default 10
-#   THRESHOLD_MB    default 4096  (mebibytes: 4 GiB headroom; metric must exceed this)
+#   THRESHOLD_MB    default 4096  (mebibytes: 4 GiB logical headroom; metric must exceed this)
 #   FILE_MB         default 50    (mebibytes per dd file when PLOTPOLL_CHIA=0)
-#   CHIA_PLOT_K     default 25    (k size for chia plotters chiapos; use --override-k if k < 32)
-#   CHIA_BUFFER_MB  default 1024  (chiapos -b buffer MB; ~1 GiB; lower if RAM-constrained)
-#   PLOTPOLL_CHIA   default 1     (1 = only Chia chiapos; 0 = only dd+mv)
+#   CHIA_PLOT_K     default 25
+#   CHIA_BUFFER_MB  default 1024  (chiapos -b buffer MB)
+#   PLOTPOLL_CHIA   default 1     (1 = only Chia; 0 = only dd+mv)
 
 # Invoked as `sh plotpoll.sh` or from a non-bash sh: re-exec so [[, ((, local work.
 if [ -z "${BASH_VERSION:-}" ]; then
@@ -38,10 +34,15 @@ PLOTPOLL_CHIA="${PLOTPOLL_CHIA:-1}"
 threshold_bytes=$((THRESHOLD_MB * 1024 * 1024))
 create_seq=0
 
+# Sum sizes of regular files under dir (bytes). find -print0 + stat (Linux/macOS).
 sum_tree_regular_files() {
 	local dir="$1"
-	find "$dir" -type f -printf '%s\n' 2>/dev/null |
-		awk '{s += $1} END {print s + 0}'
+	local sum=0 sz f
+	while IFS= read -r -d '' f; do
+		sz=$(stat -c '%s' "$f" 2>/dev/null || stat -f '%z' "$f" 2>/dev/null || echo 0)
+		sum=$((sum + sz))
+	done < <(find "$dir" -type f -print0 2>/dev/null)
+	echo "$sum"
 }
 
 # Run Chia chiapos with -t temp dir (working files) and -d dest_dir (final .plot path).
@@ -70,8 +71,6 @@ try_chia_k_plot() {
 		override=(--override-k)
 	fi
 
-	# Stream chia output to stderr in real time; do not use $(...) — that buffers all
-	# stdout/stderr until the plotter exits, so nothing appears for minutes.
 	chia_log="${workdir}/chia.log"
 	chia plotters chiapos -k "$k" "${override[@]}" -n 1 \
 		-t "$workdir" -d "$dest_dir" -b "$buf" 2>&1 | tee "$chia_log" >&2
@@ -119,31 +118,36 @@ try_dd_file() {
 	return 1
 }
 
+echo "plotpoll: starting CHIAPLOTS_DIR=${CHIAPLOTS_DIR} THRESHOLD_MB=${THRESHOLD_MB} PLOTPOLL_CHIA=${PLOTPOLL_CHIA} INTERVAL_SEC=${INTERVAL_SEC} (metric must exceed ${THRESHOLD_MB} MiB before any create)" >&2
+
 while true; do
-	room_to_create=0
-	if [[ -d "$CHIAPLOTS_DIR" ]]; then
-		avail_line="$(df -B1 "$CHIAPLOTS_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
-		if [[ -n "$avail_line" ]] && [[ "$avail_line" =~ ^[0-9]+$ ]]; then
-			files_sum="$(sum_tree_regular_files "$CHIAPLOTS_DIR")"
-			total=$((avail_line - files_sum))
-			if ((total > threshold_bytes)); then
-				room_to_create=1
-				if [[ ! -w "$CHIAPLOTS_DIR" ]]; then
-					echo "plotpoll: $CHIAPLOTS_DIR not writable" >&2
-				else
-					if [[ "${PLOTPOLL_CHIA}" == "1" ]]; then
-						try_chia_k_plot "$CHIAPLOTS_DIR" "$avail_line" "$files_sum" "$total" || true
-					else
-						create_seq=$((create_seq + 1))
-						try_dd_file "$CHIAPLOTS_DIR" "$avail_line" "$files_sum" "$total" "$create_seq" || true
-					fi
-				fi
-			fi
+	if [[ ! -d "$CHIAPLOTS_DIR" ]]; then
+		echo "plotpoll: ${CHIAPLOTS_DIR} does not exist — waiting" >&2
+		sleep "$INTERVAL_SEC"
+		continue
+	fi
+
+	avail_kb="$(df -Pk "$CHIAPLOTS_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
+	if [[ -z "$avail_kb" ]] || [[ ! "$avail_kb" =~ ^[0-9]+$ ]]; then
+		echo "plotpoll: df -Pk failed for $CHIAPLOTS_DIR (install coreutils or use a POSIX df)" >&2
+		sleep "$INTERVAL_SEC"
+		continue
+	fi
+
+	avail_bytes=$((avail_kb * 1024))
+	files_sum="$(sum_tree_regular_files "$CHIAPLOTS_DIR")"
+	total=$((avail_bytes - files_sum))
+
+	if ((total > threshold_bytes)); then
+		if [[ ! -w "$CHIAPLOTS_DIR" ]]; then
+			echo "plotpoll: $CHIAPLOTS_DIR not writable" >&2
+		elif [[ "${PLOTPOLL_CHIA}" == "1" ]]; then
+			try_chia_k_plot "$CHIAPLOTS_DIR" "$avail_bytes" "$files_sum" "$total" || true
 		else
-			echo "plotpoll: df failed for $CHIAPLOTS_DIR" >&2
+			create_seq=$((create_seq + 1))
+			try_dd_file "$CHIAPLOTS_DIR" "$avail_bytes" "$files_sum" "$total" "$create_seq" || true
 		fi
 	fi
-	if ((room_to_create == 0)); then
-		sleep "$INTERVAL_SEC"
-	fi
+
+	sleep "$INTERVAL_SEC"
 done
