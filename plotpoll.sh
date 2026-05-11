@@ -53,7 +53,7 @@ try_chia_k_plot() {
 	local avail_b="$3"
 	local plot_bytes="$4"
 	local metric="$5"
-	local workdir plotf dest k buf chia_out override
+	local workdir plotf dest k buf override chia_log chia_ec
 
 	[[ "${PLOTPOLL_CHIA}" == "1" ]] || return 1
 	command -v chia >/dev/null 2>&1 || return 1
@@ -70,12 +70,15 @@ try_chia_k_plot() {
 		override=(--override-k)
 	fi
 
-	if ! chia_out="$(
-		chia plotters chiapos -k "$k" "${override[@]}" -n 1 \
-			-t "$workdir" -d "$workdir" -b "$buf" 2>&1
-	)"; then
-		echo "plotpoll: chia plotters chiapos -k${k} failed, falling back to ${FILE_MB} MiB dd" >&2
-		echo "plotpoll: chia output (first 2KiB): ${chia_out:0:2048}" >&2
+	# Stream chia output to stderr in real time; do not use $(...) — that buffers all
+	# stdout/stderr until the plotter exits, so nothing appears for minutes.
+	chia_log="${workdir}/chia.log"
+	chia plotters chiapos -k "$k" "${override[@]}" -n 1 \
+		-t "$workdir" -d "$workdir" -b "$buf" 2>&1 | tee "$chia_log" >&2
+	chia_ec=${PIPESTATUS[0]}
+	if ((chia_ec != 0)); then
+		echo "plotpoll: chia plotters chiapos -k${k} failed (exit ${chia_ec}), falling back to ${FILE_MB} MiB dd" >&2
+		[[ -f "$chia_log" ]] && echo "plotpoll: chia log tail (first 2KiB): $(head -c 2048 "$chia_log")" >&2
 		rm -rf "$workdir"
 		return 1
 	fi
