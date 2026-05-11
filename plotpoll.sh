@@ -11,7 +11,7 @@
 #   CHIAPLOTS_DIR   default /.chiaplots
 #   INTERVAL_SEC    default 10
 #   THRESHOLD_MB    default 4096  (mebibytes: 4 GiB logical headroom; metric must exceed this)
-#   FILE_MB         default 50    (mebibytes per dd file when PLOTPOLL_CHIA=0)
+#   FILE_MB         default 600   (mebibytes per dd file when PLOTPOLL_CHIA=0)
 #   CHIA_PLOT_K     default 25
 #   CHIA_BUFFER_MB  default 1024  (chiapos -b buffer MB)
 #   PLOTPOLL_CHIA   default 1     (1 = only Chia; 0 = only dd+mv)
@@ -26,7 +26,7 @@ set -u
 CHIAPLOTS_DIR="${CHIAPLOTS_DIR:-/.chiaplots}"
 INTERVAL_SEC="${INTERVAL_SEC:-10}"
 THRESHOLD_MB="${THRESHOLD_MB:-4096}"
-FILE_MB="${FILE_MB:-50}"
+FILE_MB="${FILE_MB:-600}"
 CHIA_PLOT_K="${CHIA_PLOT_K:-25}"
 CHIA_BUFFER_MB="${CHIA_BUFFER_MB:-1024}"
 PLOTPOLL_CHIA="${PLOTPOLL_CHIA:-1}"

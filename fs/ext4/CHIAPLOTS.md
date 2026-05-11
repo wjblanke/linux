@@ -100,7 +100,7 @@ That matches how **`chiaplots`** adjusts **`statfs`**: **`df`** reports inflated
 | Script | Interpreter | Role |
 |--------|-------------|------|
 | **`makeplots.sh`** | POSIX **`sh`** | One-shot: fill staging until **`metric ≤ MIN_FREE_GIB` GiB**, then **`mv`** into **`/.chiaplots`**. |
-| **`plotpoll.sh`** | **bash** | When **`metric > THRESHOLD_MB × 1 MiB`** (default **4 GiB**), **`PLOTPOLL_CHIA=1`** runs only **`chia plotters chiapos`** (**`-t`** **`TMPDIR`**, **`-d`** **`CHIAPLOTS_DIR`**); **`PLOTPOLL_CHIA=0`** runs only **`dd`** + **`mv`** (**`FILE_MB`** MiB **`.bin`**). No automatic fallback between the two. Otherwise sleep **`INTERVAL_SEC`** (default **10** s). |
+| **`plotpoll.sh`** | **bash** | When **`metric > THRESHOLD_MB × 1 MiB`** (default **4 GiB**), **`PLOTPOLL_CHIA=1`** runs only **`chia plotters chiapos`** (**`-t`** **`TMPDIR`**, **`-d`** **`CHIAPLOTS_DIR`**); **`PLOTPOLL_CHIA=0`** runs only **`dd`** + **`mv`** (**`FILE_MB`** MiB **`.bin`**, default **600**). No automatic fallback between the two. Otherwise sleep **`INTERVAL_SEC`** (default **10** s). |
 
 ---
 
@@ -137,7 +137,7 @@ Repository root **`plotpoll.sh`** is a **bash** loop for exercising chiaplots fr
   - **`df -B1`** on that path → available bytes on the mount.
   - **`find`** sums byte sizes of **all regular files** under **`CHIAPLOTS_DIR`** (any depth).
   - **Metric** = `df_avail - plot_bytes` (same definition as **`makeplots.sh`**).
-  - If **metric > `THRESHOLD_MB` × 1024²** bytes (default **`THRESHOLD_MB=4096`** → **4 GiB**): with **`PLOTPOLL_CHIA=1`** (default), runs **`chia plotters chiapos`** with **`-t`** on a **`mktemp`** directory under **`TMPDIR`** and **`-d`** **`CHIAPLOTS_DIR`**. Chia “success” is **only** the plotter process exiting **0**; the script does **not** verify that a **`.plot`** file appeared. With **`PLOTPOLL_CHIA=0`**, runs **`dd`** into **`mktemp`** and **`mv`** to **`…/auto_….bin`** only. There is **no** fallback from Chia to **`dd`** or the reverse; failures log to stderr and the loop continues. Successful creates print a timestamped **`plotpoll:`** line.
+  - If **metric > `THRESHOLD_MB` × 1024²** bytes (default **`THRESHOLD_MB=4096`** → **4 GiB**): with **`PLOTPOLL_CHIA=1`** (default), runs **`chia plotters chiapos`** with **`-t`** on a **`mktemp`** directory under **`TMPDIR`** and **`-d`** **`CHIAPLOTS_DIR`**. Chia “success” is **only** the plotter process exiting **0**; the script does **not** verify that a **`.plot`** file appeared. With **`PLOTPOLL_CHIA=0`**, runs **`dd`** **`FILE_MB`** MiB (default **600**) into **`mktemp`** and **`mv`** to **`…/auto_….bin`** only. There is **no** fallback from Chia to **`dd`** or the reverse; failures log to stderr and the loop continues. Successful creates print a timestamped **`plotpoll:`** line.
 
 **Environment overrides:** `CHIAPLOTS_DIR`, `INTERVAL_SEC`, `THRESHOLD_MB`, `FILE_MB`, `CHIA_PLOT_K`, `CHIA_BUFFER_MB`, `PLOTPOLL_CHIA` (**`1`** = Chia only, **`0`** = **`dd`** only) — see script header.
 
