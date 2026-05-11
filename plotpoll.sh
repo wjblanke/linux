@@ -72,8 +72,19 @@ try_chia_k_plot() {
 	fi
 
 	chia_log="${workdir}/chia.log"
-	chia plotters chiapos -k "$k" "${override[@]}" -n 1 \
-		-t "$workdir" -d "$dest_dir" -b "$buf" 2>&1 | tee "$chia_log" >&2
+	# Piped output is not a TTY: Python buffers stdout; tqdm often draws in-place and
+	# prints little when not interactive. PYTHONUNBUFFERED + GNU stdbuf line buffering
+	# yields incremental lines on stderr via tee.
+	_chia_run() {
+		local -a args=(plotters chiapos -k "$k" "${override[@]}" -n 1 \
+			-t "$workdir" -d "$dest_dir" -b "$buf")
+		if command -v stdbuf >/dev/null 2>&1; then
+			PYTHONUNBUFFERED=1 stdbuf -oL -eL chia "${args[@]}" 2>&1
+		else
+			PYTHONUNBUFFERED=1 chia "${args[@]}" 2>&1
+		fi
+	}
+	_chia_run | tee "$chia_log" >&2
 	chia_ec=${PIPESTATUS[0]}
 	if ((chia_ec != 0)); then
 		echo "plotpoll: chia plotters chiapos -k${k} failed (exit ${chia_ec})" >&2
