@@ -44,7 +44,7 @@ if command -v chia >/dev/null 2>&1; then
 		chia init
 		chia configure -t true
 		chia configure --set-log-level INFO
-		chia keys generate_and_print
+		chia keys generate --label xchlinux
 	elif [[ -z "${HOME:-}" ]]; then
 		echo "plotpoll: HOME unset — cannot check ~/.chia; skipping chia init" >&2
 	fi
