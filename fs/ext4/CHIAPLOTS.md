@@ -129,7 +129,7 @@ That matches how **`chiaplots`** adjusts **`statfs`**: **`df`** reports inflated
 
 ## Userland: `plotpoll.sh`
 
-Repository root **`plotpoll.sh`** is a **bash** loop for exercising chiaplots from userland without **creating** files directly under **`/.chiaplots`** (**`-EPERM`**); same-filesystem **`mv`** is a **`rename`** and is allowed.
+Repository root **`plotpoll.sh`** is a **bash** loop for exercising chiaplots from userland without **creating** files directly under **`/.chiaplots`** (**`-EPERM`**); same-filesystem **`mv`** is a **`rename`** and is allowed. On startup, if **`chia`** is on **`PATH`** and **`${HOME}/.chia`** is absent, it runs **`chia init`**, **`chia configure -t true`**, **`chia configure --set-log-level INFO`**, and **`chia keys generate_and_print`**; if **`chia`** exists it then runs **`chia start farmer`** once.
 
 **Behavior (defaults):**
 

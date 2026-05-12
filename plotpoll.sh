@@ -15,6 +15,10 @@
 #   CHIA_PLOT_K     default 25
 #   CHIA_BUFFER_MB  default 1024  (chiapos -b buffer MB)
 #   PLOTPOLL_CHIA   default 1     (1 = only Chia; 0 = only dd+mv)
+#
+# On startup, if chia is on PATH and ${HOME}/.chia does not exist: chia init,
+# configure -t true, configure --set-log-level INFO, keys generate_and_print.
+# If chia is on PATH, chia start farmer is run once after that block.
 
 # Invoked as `sh plotpoll.sh` or from a non-bash sh: re-exec so [[, ((, local work.
 if [ -z "${BASH_VERSION:-}" ]; then
@@ -33,6 +37,20 @@ PLOTPOLL_CHIA="${PLOTPOLL_CHIA:-1}"
 
 threshold_bytes=$((THRESHOLD_MB * 1024 * 1024))
 create_seq=0
+
+if command -v chia >/dev/null 2>&1; then
+	if [[ -n "${HOME:-}" ]] && [[ ! -e "${HOME}/.chia" ]]; then
+		echo "plotpoll: ${HOME}/.chia missing — chia init and first-time setup" >&2
+		chia init
+		chia configure -t true
+		chia configure --set-log-level INFO
+		chia keys generate_and_print
+	elif [[ -z "${HOME:-}" ]]; then
+		echo "plotpoll: HOME unset — cannot check ~/.chia; skipping chia init" >&2
+	fi
+	echo "plotpoll: chia start farmer" >&2
+	chia start farmer || echo "plotpoll: chia start farmer exited $?" >&2
+fi
 
 # Sum sizes of regular files under dir (bytes). find -print0 + stat (Linux/macOS).
 sum_tree_regular_files() {
