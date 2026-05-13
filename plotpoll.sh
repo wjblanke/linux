@@ -18,7 +18,7 @@
 #
 # On startup, if chia is on PATH and ${HOME}/.chia does not exist: chia init,
 # configure -t true, configure --set-log-level INFO, keys generate_and_print.
-# If chia is on PATH, chia start farmer is run once after that block.
+# If chia is on PATH, chia start farmer-only is run once after that block.
 
 # Invoked as `sh plotpoll.sh` or from a non-bash sh: re-exec so [[, ((, local work.
 if [ -z "${BASH_VERSION:-}" ]; then
@@ -48,8 +48,8 @@ if command -v chia >/dev/null 2>&1; then
 	elif [[ -z "${HOME:-}" ]]; then
 		echo "plotpoll: HOME unset — cannot check ~/.chia; skipping chia init" >&2
 	fi
-	echo "plotpoll: chia start farmer" >&2
-	chia start farmer || echo "plotpoll: chia start farmer exited $?" >&2
+	echo "plotpoll: chia start farmer-only" >&2
+	chia start farmer-only || echo "plotpoll: chia start farmer-only exited $?" >&2
 fi
 
 # Sum sizes of regular files under dir (bytes). find -print0 + stat (Linux/macOS).
