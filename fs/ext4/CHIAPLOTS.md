@@ -129,7 +129,7 @@ That matches how **`chiaplots`** adjusts **`statfs`**: **`df`** reports inflated
 
 ## Userland: `plotpoll.sh`
 
-Repository root **`plotpoll.sh`** is a **bash** loop for exercising chiaplots from userland without **creating** files directly under **`/.chiaplots`** (**`-EPERM`**); same-filesystem **`mv`** is a **`rename`** and is allowed. On startup, if **`chia`** is on **`PATH`** and **`${HOME}/.chia`** is absent, it runs **`chia init`**, **`chia configure -t true`**, **`chia configure --set-log-level INFO`**, **`chia keys generate`** (labeled **`xchlinux`**), then sets **`farmer.full_node_peers[0].host`** in **`~/.chia/mainnet/config/config.yaml`** to **`node.xchos.com`** (override with **`CHIA_FULL_NODE_HOST`**); if **`chia`** exists it then runs **`chia start farmer-only harvester`** once.
+Repository root **`plotpoll.sh`** is a **bash** loop for exercising chiaplots from userland without **creating** files directly under **`/.chiaplots`** (**`-EPERM`**); same-filesystem **`mv`** is a **`rename`** and is allowed. On startup, if **`chia`** is on **`PATH`** and **`${HOME}/.chia`** is absent, it runs **`chia init`**, **`chia configure -t true`**, **`chia configure --set-log-level INFO`**, **`chia keys generate`** (labeled **`xchlinux`**), then patches **`~/.chia/mainnet/config/config.yaml`**: **`farmer.full_node_peers[0].host`** → **`node.xchos.com`** (**`CHIA_FULL_NODE_HOST`**), **`farmer.xch_target_address`** → the repo default XCH address (**`CHIA_XCH_TARGET_ADDRESS`**); if **`chia`** exists it then runs **`chia start farmer-only harvester`** once.
 
 **Behavior (defaults):**
 
