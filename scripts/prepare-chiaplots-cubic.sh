@@ -70,7 +70,7 @@ This directory was created by:
 Contents of this directory:
   xchos                  Copy into the Cubic chroot with your linux-*.deb files.
   chroot-commands.example.sh   Mirrors section 3 below (kernel, xchos, Chia .deb; adjust STAGING).
-  README.txt                   This file (aligned with fs/ext4/CHIAPLOTS.md).
+  README.txt                   This file (aligned with README.md).
 
 Also copy a Chia release .deb into this directory before syncing to the chroot (see
 section 1 below). The script does not download it.
@@ -191,7 +191,7 @@ Ubuntu live uses casper + overlay; / is not the same as a long-lived ext4 root a
 a normal install. Chiaplots behavior tied to ext4 on / is best validated on installed
 disk (or any normal ext4 root), not only on the live desktop.
 
-Full narrative: see fs/ext4/CHIAPLOTS.md (section "Minimal Ubuntu distribution (Cubic)").
+Full narrative: see README.md (section "Minimal Ubuntu distribution (Cubic)").
 EOF
 
 cat >"${OUT}/chroot-commands.example.sh" <<'EOF'
