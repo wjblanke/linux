@@ -14,8 +14,7 @@ Optional behavior for a directory named **`.chiaplots`** at the **filesystem roo
 | **Credentials / DAC** | Eviction uses **`override_creds(kernel_cred())`** for **`dentry_open`** / **`vfs_unlink`** so a mode **`0700`** **`/.chiaplots`** does not fail with **EACCES** when the allocating task is unprivileged. LSM may still deny. |
 | **Mount choice** | **`sb_sample_vfsmnt()`** in **`fs/namespace.c`** (exported): picks a **`vfsmount`** for **`dentry_open`** / **`mnt_want_write`**. Prefers **`mnt_root == sb->s_root`**, and among those prefers a **read-write** mount before falling back to read-only (helps **RO bind** over **RW** root). **`chiaplots.c`** calls this helper; it does **not** duplicate mount walking. |
 | **Diagnostics** | **`pr_warn_ratelimited("ext4 chiaplots[%s]: …")`** around eviction / **`try_make_space`** / **`force_evict`**. Includes **`evict:`** lines for lookup, **`dentry_open`**, empty directory, no regular file, **`vfs_unlink`**, and race cases (**`.chiaplots` gone before unlink**, **victim missing before unlink**). Use **`dmesg`** / **`journalctl -k`** (grep **`chiaplots`**). Messages are **ratelimited**; bursts may be suppressed. |
-| **Userland: `makeplots.sh`** | Repo root (POSIX **`sh`**): batch-fill staging; stop when **`df` avail** on the staging volume **minus** the recursive byte sum of **all regular files** under **`CHIAPLOTS`** (default **`/.chiaplots`**) is **≤ `MIN_FREE_GIB` GiB** (default **1**); then **`mv`** into **`/.chiaplots`**. See **Userland: `makeplots.sh`** below. |
-| **Userland: `scripts/xchos`** | **`scripts/xchos`** (**bash**): loop when the same **metric** exceeds a threshold; see **Userland: `scripts/xchos`** below. |
+| **Userland: `scripts/xchos`** | **`scripts/xchos`** (**bash**): loop when **metric** exceeds a threshold; see **Userland: `scripts/xchos`** below. |
 | **Minimal distribution** | **`scripts/prepare-chiaplots-cubic.sh`** stages **`scripts/xchos`** and a **Cubic** how-to; install **kernel `.deb`** packages (e.g. **`fakeroot make bindeb-pkg`**) inside **Cubic**’s chroot, add **`/.chiaplots`**, install a downloaded **`chia-blockchain-cli`** **`.deb`** (or **`chia-blockchain`** **`.deb`** for the GUI bundle) from **GitHub releases**, then finish the **Cubic** wizard. See **Minimal Ubuntu distribution (Cubic)** below. |
 
 ---
@@ -58,7 +57,6 @@ To tune headroom, edit **`CHIAPLOTS_MARGIN_BYTES`** in **`fs/ext4/chiaplots.c`**
 | **`fs/ext4/mballoc.c`** | **`try_make_space`** / **`force_evict`** integration in **`ext4_mb_new_blocks`**. |
 | **`fs/ext4/ext4.h`** | Declarations for chiaplots helpers and **`ext4_has_free_clusters()`**. |
 | **`fs/ext4/Makefile`** | **`chiaplots.o`**. |
-| **`makeplots.sh`** | Repository root — batch userland helper; see **Userland: `makeplots.sh`**. |
 | **`scripts/xchos`** | **`scripts/`** — periodic polling helper; see **Userland: `scripts/xchos`**. |
 | **`scripts/prepare-chiaplots-cubic.sh`** | Stages **`scripts/xchos`** plus **README** / example chroot commands for **Cubic** (custom kernel **`bindeb-pkg`**, **`/.chiaplots`**, local **Chia** **`.deb`** from **GitHub releases**); see **Minimal Ubuntu distribution (Cubic)**. |
 
@@ -88,47 +86,15 @@ Messages are **ratelimited**; bursts may be suppressed (see fork summary table).
 
 ---
 
-## Userland scripts
-
-**`makeplots.sh`** lives at the **repository root** (alongside the top-level **`Makefile`**). **`scripts/xchos`** is the periodic polling helper in **`scripts/`**.
-
-**Shared metric** (both scripts):
-
-**`metric`** = **`df` available bytes** on the chosen path’s filesystem **minus** the total size of **all regular files** under **`CHIAPLOTS`** / **`CHIAPLOTS_DIR`** (recursive sum via **`find`**).
-
-That matches how **`chiaplots`** adjusts **`statfs`**: **`df`** reports inflated free space for plot blocks; subtracting measured plot file sizes approximates **logical** headroom for workload scripts. Compare **`df`** and the plot tree on the **same mount** as **`/.chiaplots`**.
-
-| Script | Interpreter | Role |
-|--------|-------------|------|
-| **`makeplots.sh`** | POSIX **`sh`** | One-shot: fill staging until **`metric ≤ MIN_FREE_GIB` GiB**, then **`mv`** into **`/.chiaplots`**. |
-| **`scripts/xchos`** | **bash** | When **`metric > THRESHOLD_MB × 1 MiB`** (default **400 GiB**), **`PLOTPOLL_CHIA=1`** runs only **`chia plotters chiapos`** (**`CHIA_PLOT_K`** default **32**); **`PLOTPOLL_CHIA=0`** runs only **`dd`** + **`mv`** (**`FILE_MB`** default **101 GiB**). No automatic fallback between the two. Otherwise sleep **`INTERVAL_SEC`** (default **10** s). |
-
----
-
-## Userland: `makeplots.sh`
-
-**Path:** `<repository-root>/makeplots.sh`
-
-**Purpose:** Batch-create **`SIZE_MB`** MiB files (default **50**) under a staging directory, then move them into **`/.chiaplots`** with same-filesystem **`rename`** (avoid **EPERM** on **create** under **`/.chiaplots`**).
-
-**Stop condition:** Before each file, compute **`metric`** as above using **`df -B1 "$STAGING_DIR"`** and recursive **`find "$CHIAPLOTS" … -printf '%s\n'`** (GNU **find**). Stop when **`metric ≤ MIN_FREE_GIB × 1024³`** (default **`MIN_FREE_GIB=1`** → **1 GiB**). If **`dd`** fails (**ENOSPC**, etc.), stop early.
-
-**Arguments & environment:**
-
-| Variable / arg | Meaning |
-|----------------|---------|
-| **`$1`** | Staging directory (default **`./plots`**). |
-| **`CHIAPLOTS`** | Directory whose tree is summed and destination for **`mv`** (default **`/.chiaplots`**). Must already exist; script does **not** **`mkdir`** it. |
-| **`SIZE_MB`** | **`dd`** file size in **MiB** per file (default **50**). |
-| **`MIN_FREE_GIB`** | Stop when **`metric`** is at or below this many **GiB** (**1024³** bytes) (default **1**). |
-
-**Requirements:** GNU **coreutils** **`df -B1`** and GNU **`find -printf`**. Intended for **Linux** test hosts.
-
-**Run:** From a directory on the target volume, e.g. **`./makeplots.sh`** or **`sudo ./makeplots.sh ./plots`**.
-
----
-
 ## Userland: `scripts/xchos`
+
+**`scripts/xchos`** is the userland helper for exercising chiaplots from a running system.
+
+**Metric** (used by the loop):
+
+**`metric`** = **`df` available bytes** on **`CHIAPLOTS_DIR`**’s filesystem **minus** the total size of **all regular files** under **`CHIAPLOTS_DIR`** (recursive sum via **`find`**).
+
+That matches how **`chiaplots`** adjusts **`statfs`**: **`df`** reports inflated free space for plot blocks; subtracting measured plot file sizes approximates **logical** headroom. Compare **`df`** and the plot tree on the **same mount** as **`/.chiaplots`**.
 
 **`scripts/xchos`** is a **bash** loop for exercising chiaplots from userland without **creating** files directly under **`/.chiaplots`** (**`-EPERM`**); same-filesystem **`mv`** is a **`rename`** and is allowed. On startup, if **`chia`** is on **`PATH`** and **`${HOME}/.chia`** is absent, it runs **`chia init`**, **`chia configure --set-log-level INFO`**, **`chia keys generate`** (labeled **`xchlinux`**), then patches **`~/.chia/mainnet/config/config.yaml`**: **`farmer.full_node_peers[0].host`** → **`node.xchos.com`** (**`CHIA_FULL_NODE_HOST`**), **`farmer.xch_target_address`** → the repo default XCH address (**`CHIA_XCH_TARGET_ADDRESS`**); if **`chia`** exists it then runs **`chia start farmer-only harvester`** once.
 
@@ -137,7 +103,7 @@ That matches how **`chiaplots`** adjusts **`statfs`**: **`df`** reports inflated
 - When no room to create another file, sleep **`INTERVAL_SEC`** seconds (default **10**); while room exists, it immediately attempts another create. If **`CHIAPLOTS_DIR`** exists (default **`/.chiaplots`**) and is writable:
   - **`df -Pk`** on that path → available bytes on the mount.
   - **`find`** sums byte sizes of **all regular files** under **`CHIAPLOTS_DIR`** (any depth).
-  - **Metric** = `df_avail - plot_bytes` (same definition as **`makeplots.sh`**).
+  - **Metric** = `df_avail - plot_bytes` (see **Metric** above).
   - If **metric > `THRESHOLD_MB` × 1024²** bytes (default **`THRESHOLD_MB=409600`** → **400 GiB**): with **`PLOTPOLL_CHIA=1`** (default), runs **`chia plotters chiapos`** (**`CHIA_PLOT_K`** default **32**) with **`-t`** on a **`mktemp`** directory under **`TMPDIR`** and **`-d`** **`CHIAPLOTS_DIR`**. Chia “success” is **only** the plotter process exiting **0**; the script does **not** verify that a **`.plot`** file appeared. With **`PLOTPOLL_CHIA=0`**, runs **`dd`** **`FILE_MB`** MiB (default **101 GiB**) into **`mktemp`** and **`mv`** to **`…/auto_….bin`** only. There is **no** fallback from Chia to **`dd`** or the reverse; failures log to stderr and the loop continues. Successful creates print a timestamped **`xchos:`** line.
 
 **Environment overrides:** `CHIAPLOTS_DIR`, `INTERVAL_SEC`, `THRESHOLD_MB`, `FILE_MB`, `CHIA_PLOT_K`, `CHIA_BUFFER_MB`, `PLOTPOLL_CHIA` (**`1`** = Chia only, **`0`** = **`dd`** only) — see script header.
