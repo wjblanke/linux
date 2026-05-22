@@ -576,8 +576,8 @@ code {
 .giving-card {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 2rem;
+  align-items: center;
+  gap: 2rem 2.5rem;
   padding: 2.5rem clamp(1.5rem, 4vw, 3rem);
   background: linear-gradient(135deg, rgba(180, 140, 90, 0.12), rgba(62, 207, 110, 0.08));
   border: 1px solid rgba(200, 160, 100, 0.25);
@@ -585,9 +585,39 @@ code {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
 }
 
-.giving-icon {
+.giving-figure {
   flex-shrink: 0;
-  color: #e8c88a;
+  margin: 0;
+  text-align: center;
+}
+
+.giving-marmot {
+  display: block;
+  width: min(280px, 100%);
+  height: auto;
+  margin: 0 auto;
+  border-radius: var(--radius);
+  border: 2px solid rgba(200, 160, 100, 0.35);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  object-fit: cover;
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
+}
+
+.giving-card:hover .giving-marmot {
+  transform: scale(1.02) rotate(-1deg);
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.5),
+    0 0 32px rgba(200, 160, 100, 0.15);
+}
+
+.giving-caption {
+  margin-top: 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #c9a86c;
+  letter-spacing: 0.04em;
 }
 
 .giving-content {
