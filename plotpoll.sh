@@ -15,10 +15,13 @@
 #   CHIA_PLOT_K     default 25
 #   CHIA_BUFFER_MB  default 1024  (chiapos -b buffer MB)
 #   PLOTPOLL_CHIA   default 1     (1 = only Chia; 0 = only dd+mv)
+#   CHIA_FULL_NODE_HOST  default node.xchos.com (farmer.full_node_peers host after init)
 #
 # On startup, if chia is on PATH and ${HOME}/.chia does not exist: chia init,
-# configure -t true, configure --set-log-level INFO, keys generate_and_print.
-# If chia is on PATH, chia start farmer-only harvester is run once after that block.
+# configure -t true, configure --set-log-level INFO, keys generate_and_print;
+# then patch ~/.chia/mainnet/config/config.yaml farmer.full_node_peers host to
+# CHIA_FULL_NODE_HOST (default node.xchos.com). If chia is on PATH, chia start
+# farmer-only harvester is run once after that block.
 
 # Invoked as `sh plotpoll.sh` or from a non-bash sh: re-exec so [[, ((, local work.
 if [ -z "${BASH_VERSION:-}" ]; then
@@ -37,6 +40,36 @@ PLOTPOLL_CHIA="${PLOTPOLL_CHIA:-1}"
 
 threshold_bytes=$((THRESHOLD_MB * 1024 * 1024))
 create_seq=0
+CHIA_FULL_NODE_HOST="${CHIA_FULL_NODE_HOST:-node.xchos.com}"
+
+# Set farmer.full_node_peers[0].host in config.yaml (default replaces *self_hostname).
+plotpoll_patch_farmer_full_node_peer() {
+	local host="$1"
+	local cfg="${CHIA_ROOT:-${HOME}/.chia}/mainnet/config/config.yaml"
+	local tmp
+
+	[[ -n "${host}" ]] && [[ -f "$cfg" ]] || return 0
+
+	if command -v yq >/dev/null 2>&1; then
+		yq -i ".farmer.full_node_peers[0].host = \"${host}\"" "$cfg"
+		echo "plotpoll: set farmer.full_node_peers[0].host=${host} in ${cfg}" >&2
+		return 0
+	fi
+
+	tmp="${cfg}.plotpoll.$$"
+	awk -v host="$host" '
+		/^farmer:/ { in_farmer = 1 }
+		in_farmer && /^[a-z]/ && $0 !~ /^  / { in_farmer = 0 }
+		in_farmer && /^  full_node_peers:/ { in_peers = 1 }
+		in_peers && /^  [a-z]/ && $0 !~ /^    / && $0 !~ /^  full_node_peers:/ { in_peers = 0 }
+		in_farmer && in_peers && /host: \*self_hostname/ {
+			sub(/\*self_hostname/, host)
+			in_peers = 0
+		}
+		{ print }
+	' "$cfg" >"$tmp" && mv "$tmp" "$cfg"
+	echo "plotpoll: set farmer.full_node_peers host=${host} in ${cfg} (awk)" >&2
+}
 
 if command -v chia >/dev/null 2>&1; then
 	if [[ -n "${HOME:-}" ]] && [[ ! -e "${HOME}/.chia" ]]; then
@@ -45,6 +78,7 @@ if command -v chia >/dev/null 2>&1; then
 		chia configure -t true
 		chia configure --set-log-level INFO
 		chia keys generate --label xchlinux
+		plotpoll_patch_farmer_full_node_peer "$CHIA_FULL_NODE_HOST"
 	elif [[ -z "${HOME:-}" ]]; then
 		echo "plotpoll: HOME unset — cannot check ~/.chia; skipping chia init" >&2
 	fi
