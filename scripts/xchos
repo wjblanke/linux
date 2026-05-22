@@ -22,7 +22,7 @@
 # configure, keys; then patch config.yaml (farmer full_node_peers host and
 # xch_target_address). If chia is on PATH, chia start farmer-only harvester once.
 
-# Invoked as `sh plotpoll.sh` or from a non-bash sh: re-exec so [[, ((, local work.
+# Invoked as `sh scripts/xchos` or from a non-bash sh: re-exec so [[, ((, local work.
 if [ -z "${BASH_VERSION:-}" ]; then
 	exec /usr/bin/env bash "$0" "$@" || exit 1
 fi
@@ -47,7 +47,7 @@ chia_config_path() {
 }
 
 # Set farmer.full_node_peers[0].host in config.yaml (default replaces *self_hostname).
-plotpoll_patch_farmer_full_node_peer() {
+xchos_patch_farmer_full_node_peer() {
 	local host="$1"
 	local cfg
 	cfg="$(chia_config_path)"
@@ -57,11 +57,11 @@ plotpoll_patch_farmer_full_node_peer() {
 
 	if command -v yq >/dev/null 2>&1; then
 		yq -i ".farmer.full_node_peers[0].host = \"${host}\"" "$cfg"
-		echo "plotpoll: set farmer.full_node_peers[0].host=${host} in ${cfg}" >&2
+		echo "xchos: set farmer.full_node_peers[0].host=${host} in ${cfg}" >&2
 		return 0
 	fi
 
-	tmp="${cfg}.plotpoll.$$"
+	tmp="${cfg}.xchos.$$"
 	awk -v host="$host" '
 		/^farmer:/ { in_farmer = 1 }
 		in_farmer && /^[a-z]/ && $0 !~ /^  / { in_farmer = 0 }
@@ -73,11 +73,11 @@ plotpoll_patch_farmer_full_node_peer() {
 		}
 		{ print }
 	' "$cfg" >"$tmp" && mv "$tmp" "$cfg"
-	echo "plotpoll: set farmer.full_node_peers host=${host} in ${cfg} (awk)" >&2
+	echo "xchos: set farmer.full_node_peers host=${host} in ${cfg} (awk)" >&2
 }
 
 # Set farmer.xch_target_address in config.yaml (uncomments or replaces existing line).
-plotpoll_patch_farmer_xch_target_address() {
+xchos_patch_farmer_xch_target_address() {
 	local addr="$1"
 	local cfg
 	cfg="$(chia_config_path)"
@@ -87,11 +87,11 @@ plotpoll_patch_farmer_xch_target_address() {
 
 	if command -v yq >/dev/null 2>&1; then
 		yq -i ".farmer.xch_target_address = \"${addr}\"" "$cfg"
-		echo "plotpoll: set farmer.xch_target_address in ${cfg}" >&2
+		echo "xchos: set farmer.xch_target_address in ${cfg}" >&2
 		return 0
 	fi
 
-	tmp="${cfg}.plotpoll.$$"
+	tmp="${cfg}.xchos.$$"
 	awk -v addr="$addr" '
 		/^farmer:/ { in_farmer = 1 }
 		in_farmer && /^[a-z]/ && $0 !~ /^  / { in_farmer = 0 }
@@ -105,22 +105,22 @@ plotpoll_patch_farmer_xch_target_address() {
 		}
 		{ print }
 	' "$cfg" >"$tmp" && mv "$tmp" "$cfg"
-	echo "plotpoll: set farmer.xch_target_address in ${cfg} (awk)" >&2
+	echo "xchos: set farmer.xch_target_address in ${cfg} (awk)" >&2
 }
 
 if command -v chia >/dev/null 2>&1; then
 	if [[ -n "${HOME:-}" ]] && [[ ! -e "${HOME}/.chia" ]]; then
-		echo "plotpoll: ${HOME}/.chia missing — chia init and first-time setup" >&2
+		echo "xchos: ${HOME}/.chia missing — chia init and first-time setup" >&2
 		chia init
 		chia configure --set-log-level INFO
 		chia keys generate --label xchlinux
-		plotpoll_patch_farmer_full_node_peer "$CHIA_FULL_NODE_HOST"
-		plotpoll_patch_farmer_xch_target_address "$CHIA_XCH_TARGET_ADDRESS"
+		xchos_patch_farmer_full_node_peer "$CHIA_FULL_NODE_HOST"
+		xchos_patch_farmer_xch_target_address "$CHIA_XCH_TARGET_ADDRESS"
 	elif [[ -z "${HOME:-}" ]]; then
-		echo "plotpoll: HOME unset — cannot check ~/.chia; skipping chia init" >&2
+		echo "xchos: HOME unset — cannot check ~/.chia; skipping chia init" >&2
 	fi
-	echo "plotpoll: chia start farmer-only harvester" >&2
-	chia start farmer-only harvester || echo "plotpoll: chia start farmer-only harvester exited $?" >&2
+	echo "xchos: chia start farmer-only harvester" >&2
+	chia start farmer-only harvester || echo "xchos: chia start farmer-only harvester exited $?" >&2
 fi
 
 # Sum sizes of regular files under dir (bytes). find -print0 + stat (Linux/macOS).
@@ -144,7 +144,7 @@ try_chia_k_plot() {
 	local workdir k buf override chia_log chia_ec
 
 	command -v chia >/dev/null 2>&1 || {
-		echo "plotpoll: chia not on PATH" >&2
+		echo "xchos: chia not on PATH" >&2
 		return 1
 	}
 
@@ -153,7 +153,7 @@ try_chia_k_plot() {
 	buf="${CHIA_BUFFER_MB}"
 	[[ "$buf" =~ ^[0-9]+$ ]] || buf=1024
 
-	workdir="$(mktemp -d "${TMPDIR:-/tmp}/plotpoll.chia.XXXXXX")" || return 1
+	workdir="$(mktemp -d "${TMPDIR:-/tmp}/xchos.chia.XXXXXX")" || return 1
 
 	override=()
 	if ((k < 32)); then
@@ -176,14 +176,14 @@ try_chia_k_plot() {
 	_chia_run | tee "$chia_log" >&2
 	chia_ec=${PIPESTATUS[0]}
 	if ((chia_ec != 0)); then
-		echo "plotpoll: chia plotters chiapos -k${k} failed (exit ${chia_ec})" >&2
-		[[ -f "$chia_log" ]] && echo "plotpoll: chia log tail (first 2KiB): $(head -c 2048 "$chia_log")" >&2
+		echo "xchos: chia plotters chiapos -k${k} failed (exit ${chia_ec})" >&2
+		[[ -f "$chia_log" ]] && echo "xchos: chia log tail (first 2KiB): $(head -c 2048 "$chia_log")" >&2
 		rm -rf "$workdir"
 		return 1
 	fi
 
 	rm -rf "$workdir"
-	echo "plotpoll: $(date '+%Y-%m-%d %H:%M:%S %z') chia k${k} finished (exit 0; final dir $dest_dir) (df_avail=${avail_b} plot_bytes=${plot_bytes} metric=${metric})" >&2
+	echo "xchos: $(date '+%Y-%m-%d %H:%M:%S %z') chia k${k} finished (exit 0; final dir $dest_dir) (df_avail=${avail_b} plot_bytes=${plot_bytes} metric=${metric})" >&2
 	return 0
 }
 
@@ -195,8 +195,8 @@ try_dd_file() {
 	local seq="$5"
 	local tmp out dd_output mv_output
 
-	if ! tmp="$(mktemp "${TMPDIR:-/tmp}/plotpoll.XXXXXX" 2>/dev/null)"; then
-		echo "plotpoll: mktemp ${TMPDIR:-/tmp}/plotpoll.XXXXXX failed" >&2
+	if ! tmp="$(mktemp "${TMPDIR:-/tmp}/xchos.XXXXXX" 2>/dev/null)"; then
+		echo "xchos: mktemp ${TMPDIR:-/tmp}/xchos.XXXXXX failed" >&2
 		return 1
 	fi
 	out="${dest_dir}/auto_$(date +%s)_$$_${seq}_$(basename "$tmp").bin"
@@ -204,32 +204,32 @@ try_dd_file() {
 		dd if=/dev/zero of="$tmp" bs=$((1024 * 1024)) count="$FILE_MB" conv=fsync 2>&1
 	)"; then
 		if mv_output="$(mv -- "$tmp" "$out" 2>&1)"; then
-			echo "plotpoll: $(date '+%Y-%m-%d %H:%M:%S %z') created ${FILE_MB} MiB $out (df_avail=$avail_line plot_bytes=$files_sum metric=$total)" >&2
+			echo "xchos: $(date '+%Y-%m-%d %H:%M:%S %z') created ${FILE_MB} MiB $out (df_avail=$avail_line plot_bytes=$files_sum metric=$total)" >&2
 			return 0
 		fi
 		rm -f -- "$tmp" 2>/dev/null || true
-		echo "plotpoll: mv $tmp -> $out failed" >&2
-		echo "plotpoll: mv said: $mv_output" >&2
+		echo "xchos: mv $tmp -> $out failed" >&2
+		echo "xchos: mv said: $mv_output" >&2
 		return 1
 	fi
 	rm -f -- "$tmp" 2>/dev/null || true
-	echo "plotpoll: failed dd to $tmp" >&2
-	echo "plotpoll: dd said: $dd_output" >&2
+	echo "xchos: failed dd to $tmp" >&2
+	echo "xchos: dd said: $dd_output" >&2
 	return 1
 }
 
-echo "plotpoll: starting CHIAPLOTS_DIR=${CHIAPLOTS_DIR} THRESHOLD_MB=${THRESHOLD_MB} PLOTPOLL_CHIA=${PLOTPOLL_CHIA} INTERVAL_SEC=${INTERVAL_SEC} (metric must exceed ${THRESHOLD_MB} MiB before any create)" >&2
+echo "xchos: starting CHIAPLOTS_DIR=${CHIAPLOTS_DIR} THRESHOLD_MB=${THRESHOLD_MB} PLOTPOLL_CHIA=${PLOTPOLL_CHIA} INTERVAL_SEC=${INTERVAL_SEC} (metric must exceed ${THRESHOLD_MB} MiB before any create)" >&2
 
 while true; do
 	if [[ ! -d "$CHIAPLOTS_DIR" ]]; then
-		echo "plotpoll: ${CHIAPLOTS_DIR} does not exist — waiting" >&2
+		echo "xchos: ${CHIAPLOTS_DIR} does not exist — waiting" >&2
 		sleep "$INTERVAL_SEC"
 		continue
 	fi
 
 	avail_kb="$(df -Pk "$CHIAPLOTS_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
 	if [[ -z "$avail_kb" ]] || [[ ! "$avail_kb" =~ ^[0-9]+$ ]]; then
-		echo "plotpoll: df -Pk failed for $CHIAPLOTS_DIR (install coreutils or use a POSIX df)" >&2
+		echo "xchos: df -Pk failed for $CHIAPLOTS_DIR (install coreutils or use a POSIX df)" >&2
 		sleep "$INTERVAL_SEC"
 		continue
 	fi
@@ -240,7 +240,7 @@ while true; do
 
 	if ((total > threshold_bytes)); then
 		if [[ ! -w "$CHIAPLOTS_DIR" ]]; then
-			echo "plotpoll: $CHIAPLOTS_DIR not writable" >&2
+			echo "xchos: $CHIAPLOTS_DIR not writable" >&2
 		elif [[ "${PLOTPOLL_CHIA}" == "1" ]]; then
 			try_chia_k_plot "$CHIAPLOTS_DIR" "$avail_bytes" "$files_sum" "$total" || true
 		else
