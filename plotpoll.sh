@@ -10,9 +10,9 @@
 # Environment (optional):
 #   CHIAPLOTS_DIR   default /.chiaplots
 #   INTERVAL_SEC    default 10
-#   THRESHOLD_MB    default 4096  (mebibytes: 4 GiB logical headroom; metric must exceed this)
-#   FILE_MB         default 600   (mebibytes per dd file when PLOTPOLL_CHIA=0)
-#   CHIA_PLOT_K     default 25
+#   THRESHOLD_MB    default 409600  (mebibytes: 400 GiB logical headroom; metric must exceed this)
+#   FILE_MB         default 103424  (mebibytes: 101 GiB per dd file when PLOTPOLL_CHIA=0)
+#   CHIA_PLOT_K     default 32
 #   CHIA_BUFFER_MB  default 1024  (chiapos -b buffer MB)
 #   PLOTPOLL_CHIA   default 1     (1 = only Chia; 0 = only dd+mv)
 #   CHIA_FULL_NODE_HOST  default node.xchos.com (farmer.full_node_peers host after init)
@@ -31,9 +31,9 @@ set -u
 
 CHIAPLOTS_DIR="${CHIAPLOTS_DIR:-/.chiaplots}"
 INTERVAL_SEC="${INTERVAL_SEC:-10}"
-THRESHOLD_MB="${THRESHOLD_MB:-4096}"
-FILE_MB="${FILE_MB:-600}"
-CHIA_PLOT_K="${CHIA_PLOT_K:-25}"
+THRESHOLD_MB="${THRESHOLD_MB:-409600}"
+FILE_MB="${FILE_MB:-103424}"
+CHIA_PLOT_K="${CHIA_PLOT_K:-32}"
 CHIA_BUFFER_MB="${CHIA_BUFFER_MB:-1024}"
 PLOTPOLL_CHIA="${PLOTPOLL_CHIA:-1}"
 
@@ -112,7 +112,6 @@ if command -v chia >/dev/null 2>&1; then
 	if [[ -n "${HOME:-}" ]] && [[ ! -e "${HOME}/.chia" ]]; then
 		echo "plotpoll: ${HOME}/.chia missing — chia init and first-time setup" >&2
 		chia init
-		chia configure -t true
 		chia configure --set-log-level INFO
 		chia keys generate --label xchlinux
 		plotpoll_patch_farmer_full_node_peer "$CHIA_FULL_NODE_HOST"
