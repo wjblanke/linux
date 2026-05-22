@@ -1,4 +1,4 @@
-# Root `.chiaplots` handling (ext4)
+# xchOS
 
 Optional behavior for a directory named **`.chiaplots`** at the **filesystem root** (child of the mount root inode). Deeper paths named `.chiaplots` are **not** treated specially.
 
