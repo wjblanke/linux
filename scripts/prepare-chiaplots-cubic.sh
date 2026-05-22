@@ -34,14 +34,14 @@ if [[ ! -f "${LINUX_SRC}/Makefile" ]]; then
 	echo "LINUX_SRC is not a kernel tree: ${LINUX_SRC}" >&2
 	exit 1
 fi
-if [[ ! -f "${LINUX_SRC}/plotpoll.sh" ]]; then
-	echo "Missing ${LINUX_SRC}/plotpoll.sh" >&2
+if [[ ! -f "${LINUX_SRC}/scripts/xchos" ]]; then
+	echo "Missing ${LINUX_SRC}/scripts/xchos" >&2
 	exit 1
 fi
 
 mkdir -p "$OUT"
-cp -a -- "${LINUX_SRC}/plotpoll.sh" "${OUT}/plotpoll.sh"
-chmod a+rX "${OUT}/plotpoll.sh"
+cp -a -- "${LINUX_SRC}/scripts/xchos" "${OUT}/xchos"
+chmod a+rX "${OUT}/xchos"
 
 if [[ "$RUN_BINDEB" == "1" ]]; then
 	if ! command -v fakeroot >/dev/null 2>&1; then
@@ -68,8 +68,8 @@ This directory was created by:
   scripts/prepare-chiaplots-cubic.sh ${LINUX_SRC} ${OUT}
 
 Contents of this directory:
-  plotpoll.sh                  Copy into the Cubic chroot with your linux-*.deb files.
-  chroot-commands.example.sh   Mirrors section 3 below (kernel, plotpoll, Chia .deb; adjust STAGING).
+  xchos                  Copy into the Cubic chroot with your linux-*.deb files.
+  chroot-commands.example.sh   Mirrors section 3 below (kernel, xchos, Chia .deb; adjust STAGING).
   README.txt                   This file (aligned with fs/ext4/CHIAPLOTS.md).
 
 Also copy a Chia release .deb into this directory before syncing to the chroot (see
@@ -85,7 +85,7 @@ Prerequisites
 - Kernel tree configured so: fakeroot make bindeb-pkg succeeds (build deps + fakeroot).
 - Base .iso arch matches your kernel (amd64 vs arm64). Prefer same release family
   as the chroot (e.g. Noble ISO for noble userspace).
-- plotpoll.sh is staged here from: ${LINUX_SRC}
+- xchos is staged here from: ${LINUX_SRC}/scripts/xchos
 - Network in the Cubic chroot: apt still reaches Ubuntu mirrors for dependencies when
   installing local .deb files (kernel + Chia).
 
@@ -111,7 +111,7 @@ From your linux source tree (chiaplots fork):
 You need linux-image-*.deb and linux-modules-*.deb for a bootable image.
 linux-headers-*.deb is optional (tooling / out-of-tree modules).
 
-Copy them next to this staging copy of plotpoll (this directory):
+Copy them next to this staging copy of xchos (this directory):
 
   cp -v /path/to/parent-of-linux/linux-image-*.deb /path/to/parent-of-linux/linux-modules-*.deb ${OUT}/
 
@@ -135,15 +135,15 @@ Or re-run this script with:
 6) Generate       — Write the final .iso.
 
 Getting files into the chroot: from the host, copy everything in this directory
-(including linux-image-*.deb, linux-modules-*.deb, plotpoll.sh, chia-blockchain*.deb)
+(including linux-image-*.deb, linux-modules-*.deb, xchos, chia-blockchain*.deb)
 into a path inside
 the custom root. Cubic's UI shows the project path; open it in a file manager or a
 second host terminal. Common convention: copy into /tmp/chiaplots-staging/ inside
 the chroot, then run section 3 from there.
 
-3. Inside Cubic's root shell (kernel, plotpoll, /.chiaplots, Chia)
+3. Inside Cubic's root shell (kernel, xchos, /.chiaplots, Chia)
 ----------------------------------------------------------------
-Run after linux-image-*.deb, linux-modules-*.deb, plotpoll.sh, and your Chia .deb
+Run after linux-image-*.deb, linux-modules-*.deb, xchos, and your Chia .deb
 are in one place (example: /tmp/chiaplots-staging):
 
   STAGING=/tmp/chiaplots-staging
@@ -155,8 +155,8 @@ are in one place (example: /tmp/chiaplots-staging):
   # If apt complains about dependencies:
   #   apt-get install -f -y
 
-  # 3b — plotpoll helper
-  install -m 0755 ./plotpoll.sh /usr/local/bin/plotpoll.sh
+  # 3b — xchos helper
+  install -m 0755 ./xchos /usr/local/bin/xchos
 
   # 3c — Kernel never creates this; userland must.
   mkdir -p /.chiaplots
@@ -197,7 +197,7 @@ EOF
 cat >"${OUT}/chroot-commands.example.sh" <<'EOF'
 #!/bin/bash
 # Run inside Cubic's chroot as root, after copying linux-image-*.deb,
-# linux-modules-*.deb, plotpoll.sh, and chia-blockchain*.deb into STAGING
+# linux-modules-*.deb, xchos, and chia-blockchain*.deb into STAGING
 # (default /tmp/chiaplots-staging).
 set -euo pipefail
 STAGING="${1:-/tmp/chiaplots-staging}"
@@ -210,8 +210,8 @@ if ! apt install -y ./linux-image-*.deb ./linux-modules-*.deb; then
 	apt install -y ./linux-image-*.deb ./linux-modules-*.deb
 fi
 
-# 3b — plotpoll
-install -m 0755 ./plotpoll.sh /usr/local/bin/plotpoll.sh
+# 3b — xchos
+install -m 0755 ./xchos /usr/local/bin/xchos
 
 # 3c — /.chiaplots
 mkdir -p /.chiaplots
@@ -230,7 +230,7 @@ echo "Done. Verify: ls /boot/vmlinuz-* /lib/modules/ ; dpkg -l | grep chia-block
 EOF
 chmod a+rX "${OUT}/chroot-commands.example.sh"
 
-echo "Staged: ${OUT}/plotpoll.sh"
+echo "Staged: ${OUT}/xchos"
 echo "Read:   ${OUT}/README.txt"
 if [[ "$RUN_BINDEB" != "1" ]]; then
 	echo "Tip: build kernel .deb packages with:  (cd ${LINUX_SRC} && fakeroot make -j\$(nproc) bindeb-pkg)"
