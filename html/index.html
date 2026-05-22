@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="xchOS — a Linux kernel fork with ext4 chiaplots: plot-aware storage, automatic eviction, and integrated Chia farming.">
+  <title>xchOS — Plot-aware Linux</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="bg-mesh" aria-hidden="true"></div>
+  <div class="bg-grid" aria-hidden="true"></div>
+
+  <nav class="nav" id="nav">
+    <a class="nav-logo" href="#top">xch<span>OS</span></a>
+    <button class="nav-toggle" id="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+    <ul class="nav-links" id="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how">How it works</a></li>
+      <li><a href="#xchos">xchos</a></li>
+      <li><a href="#giving">Giving</a></li>
+      <li><a href="#build">Build</a></li>
+      <li><a href="#source">Source</a></li>
+      <li><a href="https://github.com/wjblanke/linux" class="nav-cta" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+    </ul>
+  </nav>
+
+  <header class="hero" id="top">
+    <div class="hero-badge reveal">Linux · ext4 · Chia</div>
+    <h1 class="hero-title reveal">
+      Storage that<br>
+      <span class="gradient-text">understands plots</span>
+    </h1>
+    <p class="hero-lead reveal">
+      xchOS extends the kernel with <code>/.chiaplots</code> — a root-level plot vault on ext4.
+      Free space reporting, create restrictions, and proactive eviction work together so
+      your system keeps farming without drowning in plot files.
+    </p>
+    <div class="hero-actions reveal">
+      <a href="#build" class="btn btn-primary">Get started</a>
+      <a href="https://github.com/wjblanke/linux" class="btn btn-ghost btn-github" target="_blank" rel="noopener noreferrer">
+        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><path fill="currentColor" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/></svg>
+        View on GitHub
+      </a>
+      <a href="#features" class="btn btn-ghost">Explore features</a>
+    </div>
+    <div class="hero-stats reveal">
+      <div class="stat">
+        <span class="stat-value">ext4</span>
+        <span class="stat-label">Filesystem layer</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value">/.chiaplots</span>
+        <span class="stat-label">Mount-root vault</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value">xchos</span>
+        <span class="stat-label">Userland daemon</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="section" id="features">
+      <div class="section-header reveal">
+        <span class="section-tag">Kernel extensions</span>
+        <h2>Three pillars of chiaplots</h2>
+        <p>Special behavior applies only to <code>/.chiaplots</code> at the filesystem root — not nested paths with the same name.</p>
+      </div>
+      <div class="cards">
+        <article class="card reveal">
+          <div class="card-icon" aria-hidden="true">
+            <svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="1.5"/><path d="M14 28h20M18 20h12M22 14h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <h3>Inflated free space</h3>
+          <p>Blocks used by regular files in <code>/.chiaplots</code> are added back into <code>f_bfree</code> and <code>f_bavail</code>. <code>df</code> reflects logical headroom while plots stay on disk.</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-icon" aria-hidden="true">
+            <svg viewBox="0 0 48 48" fill="none"><rect x="8" y="12" width="32" height="28" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M16 20h16M16 26h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M30 8v6M18 8v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <h3>No direct creates</h3>
+          <p><code>create</code>, <code>mkdir</code>, <code>symlink</code>, and similar ops return <code>-EPERM</code> under the vault. Same-filesystem <code>rename</code> / <code>mv</code> is allowed — the path plots take in production.</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-icon" aria-hidden="true">
+            <svg viewBox="0 0 48 48" fill="none"><path d="M12 36V20l12-8 12 8v16" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M20 36V26h8v10" stroke="currentColor" stroke-width="1.5"/><circle cx="36" cy="14" r="4" stroke="currentColor" stroke-width="1.5"/></svg>
+          </div>
+          <h3>Proactive eviction</h3>
+          <p>When free clusters fall below demand plus a 1&nbsp;GiB margin, the kernel deletes the oldest regular file in readdir order — making room before allocation fails.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="how">
+      <div class="split">
+        <div class="split-content reveal">
+          <span class="section-tag">Architecture</span>
+          <h2>The plot lifecycle</h2>
+          <p>Plots land in <code>/.chiaplots</code> via rename, not create. The <strong>metric</strong> userland tools use mirrors kernel semantics:</p>
+          <div class="formula">
+            <span>metric</span>
+            <span class="eq">=</span>
+            <span>df avail</span>
+            <span class="eq">−</span>
+            <span>sum(plot files)</span>
+          </div>
+          <p class="muted">When metric exceeds your threshold, xchos plots more. When the disk starves, the kernel evicts.</p>
+        </div>
+        <div class="split-visual reveal">
+          <div class="flow">
+            <div class="flow-step">
+              <span class="flow-num">01</span>
+              <div>
+                <strong>Plotter writes to temp</strong>
+                <p>Chia chiapos uses <code>-t</code> on a temp dir, <code>-d</code> for final destination.</p>
+              </div>
+            </div>
+            <div class="flow-arrow">↓</div>
+            <div class="flow-step">
+              <span class="flow-num">02</span>
+              <div>
+                <strong>Rename into vault</strong>
+                <p>Same-filesystem <code>mv</code> — allowed where create would fail.</p>
+              </div>
+            </div>
+            <div class="flow-arrow">↓</div>
+            <div class="flow-step">
+              <span class="flow-num">03</span>
+              <div>
+                <strong>statfs adjusts</strong>
+                <p>Plot blocks count as free in <code>df</code>; eviction frees real clusters when needed.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="xchos">
+      <div class="section-header reveal">
+        <span class="section-tag">Userland</span>
+        <h2>Meet <code>xchos</code></h2>
+        <p>A bash loop that keeps your vault filled when headroom allows — Chia plotting by default, with optional <code>dd</code> mode for testing.</p>
+      </div>
+      <div class="xchos-grid">
+        <div class="terminal reveal">
+          <div class="terminal-bar">
+            <span></span><span></span><span></span>
+            <span class="terminal-title">scripts/xchos</span>
+          </div>
+          <pre class="terminal-body"><code><span class="prompt">$</span> ./scripts/xchos
+<span class="out">xchos: starting CHIAPLOTS_DIR=/.chiaplots THRESHOLD_MB=409600 ...</span>
+<span class="out">xchos: chia plotters chiapos -k32 ...</span>
+<span class="dim"># On first run with chia installed:</span>
+<span class="out">chia init → keys → node.xchos.com → farmer-only harvester</span></code></pre>
+        </div>
+        <ul class="feature-list reveal">
+          <li>
+            <strong>Chia-first</strong>
+            <span>Default k32 chiapos when <code>PLOTPOLL_CHIA=1</code></span>
+          </li>
+          <li>
+            <strong>Smart threshold</strong>
+            <span>Plots only when metric &gt; 400&nbsp;GiB headroom (configurable)</span>
+          </li>
+          <li>
+            <strong>Bootstrap</strong>
+            <span>Auto-init wallet, peer to <code>node.xchos.com</code></span>
+          </li>
+          <li>
+            <strong>ISO-ready</strong>
+            <span>Staged via <code>prepare-chiaplots-cubic.sh</code> for custom Ubuntu images</span>
+          </li>
+          <li>
+            <strong>Rewards with purpose</strong>
+            <span>Farmer payouts go to the <a href="https://marmots.org/" target="_blank" rel="noopener noreferrer">Marmot Recovery Foundation</a> by default</span>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section section-giving" id="giving">
+      <div class="giving-card reveal">
+        <div class="giving-icon" aria-hidden="true">
+          <svg viewBox="0 0 64 64" fill="none" width="64" height="64">
+            <circle cx="32" cy="32" r="30" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
+            <ellipse cx="32" cy="38" rx="14" ry="10" stroke="currentColor" stroke-width="1.5"/>
+            <circle cx="24" cy="28" r="3" fill="currentColor"/>
+            <circle cx="40" cy="28" r="3" fill="currentColor"/>
+            <path d="M20 22c2-6 8-10 12-10s10 4 12 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="giving-content">
+          <span class="section-tag">Default payout</span>
+          <h2>Farming rewards support marmot recovery</h2>
+          <p>
+            When <code>xchos</code> sets up Chia for the first time, farmer rewards are configured to benefit the
+            <a href="https://marmots.org/" target="_blank" rel="noopener noreferrer"><strong>Marmot Recovery Foundation</strong></a>
+            by default — helping save the Vancouver Island marmot, one of Canada’s most endangered mammals.
+          </p>
+          <p class="giving-detail">
+            The foundation breeds and releases marmots, restores habitat, and monitors wild populations.
+            There were once fewer than 30 left in the wild; recovery efforts are bringing them back.
+          </p>
+          <a href="https://marmots.org/" target="_blank" rel="noopener noreferrer" class="btn btn-giving">Learn about marmots.org</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="build">
+      <div class="section-header reveal">
+        <span class="section-tag">Get started</span>
+        <h2>Build, boot, plot</h2>
+      </div>
+      <div class="steps reveal">
+        <div class="step">
+          <span class="step-n">1</span>
+          <h3>Build the kernel</h3>
+          <pre><code>git clone https://github.com/wjblanke/linux.git
+cd linux && cp /boot/config-$(uname -r) .config
+make olddefconfig && make -j$(nproc)
+sudo make modules_install && sudo make install</code></pre>
+        </div>
+        <div class="step">
+          <span class="step-n">2</span>
+          <h3>Create the vault</h3>
+          <pre><code>sudo mkdir /.chiaplots
+sudo chmod 777 /.chiaplots
+sudo reboot</code></pre>
+        </div>
+        <div class="step">
+          <span class="step-n">3</span>
+          <h3>Run xchos</h3>
+          <pre><code>./scripts/xchos
+# or install to /usr/local/bin/xchos from a Cubic ISO build</code></pre>
+        </div>
+      </div>
+      <div class="iso-banner reveal">
+        <div>
+          <h3>Custom Ubuntu ISO</h3>
+          <p>Remix an official image with Cubic — drop in your kernel <code>.deb</code>, Chia CLI, and <code>xchos</code> using <code>scripts/prepare-chiaplots-cubic.sh</code>.</p>
+        </div>
+        <a href="https://github.com/wjblanke/linux#minimal-ubuntu-distribution-cubic" class="btn btn-primary" target="_blank" rel="noopener noreferrer">Read the guide</a>
+      </div>
+    </section>
+
+    <section class="section" id="source">
+      <div class="section-header reveal">
+        <span class="section-tag">Open source</span>
+        <h2>GitHub repository</h2>
+        <p>
+          xchOS is developed in public at
+          <a href="https://github.com/wjblanke/linux" target="_blank" rel="noopener noreferrer">github.com/wjblanke/linux</a>
+          — a Linux kernel fork with ext4 chiaplots, userland tooling, and build docs.
+        </p>
+      </div>
+      <div class="repo-panel reveal">
+        <div class="repo-header">
+          <svg class="repo-github-mark" viewBox="0 0 24 24" aria-hidden="true" width="28" height="28"><path fill="currentColor" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/></svg>
+          <div>
+            <a href="https://github.com/wjblanke/linux" class="repo-name" target="_blank" rel="noopener noreferrer">wjblanke / linux</a>
+            <p class="repo-desc">Kernel fork · ext4 <code>/.chiaplots</code> · <code>scripts/xchos</code> · Cubic ISO staging</p>
+          </div>
+        </div>
+        <div class="repo-clone">
+          <label for="clone-url">Clone</label>
+          <div class="repo-clone-row">
+            <code id="clone-url">git clone https://github.com/wjblanke/linux.git</code>
+            <button type="button" class="btn-copy" id="copy-clone" aria-label="Copy clone URL">Copy</button>
+          </div>
+        </div>
+        <div class="repo-tree">
+          <h3>What’s in the tree</h3>
+          <ul>
+            <li><code>README.md</code> — full xchOS documentation (chiaplots, build, Cubic)</li>
+            <li><code>fs/ext4/chiaplots.c</code> — kernel implementation</li>
+            <li><code>scripts/xchos</code> — plot polling and Chia farmer helper</li>
+            <li><code>scripts/prepare-chiaplots-cubic.sh</code> — stage files for custom Ubuntu ISOs</li>
+            <li><code>html/</code> — this website</li>
+          </ul>
+        </div>
+        <div class="repo-actions">
+          <a href="https://github.com/wjblanke/linux" class="btn btn-primary" target="_blank" rel="noopener noreferrer">Open repository</a>
+          <a href="https://github.com/wjblanke/linux#readme" class="btn btn-ghost" target="_blank" rel="noopener noreferrer">Read README.md</a>
+          <a href="../README.md" class="btn btn-ghost">Local docs</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span class="footer-brand">xchOS</span>
+      <p>Linux kernel fork · ext4 chiaplots · Chia integration</p>
+      <div class="footer-links">
+        <a href="https://github.com/wjblanke/linux" target="_blank" rel="noopener noreferrer">github.com/wjblanke/linux</a>
+        <a href="../README.md">Documentation</a>
+        <a href="https://node.xchos.com">node.xchos.com</a>
+        <a href="https://marmots.org/" target="_blank" rel="noopener noreferrer">Marmot Recovery Foundation</a>
+      </div>
+      <p class="footer-copy">Plot blocks stay allocated. Only reporting and policy change.</p>
+    </div>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>
