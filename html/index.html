@@ -3,8 +3,82 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="xchOS — a Linux kernel fork with ext4 chiaplots: plot-aware storage, automatic eviction, and integrated Chia farming.">
-  <title>xchOS — Plot-aware Linux</title>
+  <title>xchOS — Plot-aware Linux for Chia Farming | ext4 chiaplots</title>
+  <meta name="description" content="xchOS is a Linux kernel fork with ext4 chiaplots: plot-aware storage at /.chiaplots, automatic eviction, and the xchos userland daemon for Chia farming. Open source on GitHub.">
+  <meta name="keywords" content="xchOS, Chia, Linux kernel, ext4, chiaplots, Chia farming, chiapos, plot storage, xchos, open source">
+  <meta name="author" content="xchOS">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <meta name="theme-color" content="#3ecf6e">
+  <link rel="canonical" href="https://xchos.com/">
+  <link rel="sitemap" type="application/xml" title="Sitemap" href="sitemap.xml">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="xchOS">
+  <meta property="og:title" content="xchOS — Plot-aware Linux for Chia Farming">
+  <meta property="og:description" content="Linux kernel fork with ext4 chiaplots: smart free-space reporting, plot vault at /.chiaplots, proactive eviction, and integrated Chia farming via xchos.">
+  <meta property="og:url" content="https://xchos.com/">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:image" content="https://xchos.com/images/marmot.png">
+  <meta property="og:image:alt" content="Vancouver Island marmot — xchOS farming rewards support marmot recovery">
+  <meta property="og:image:width" content="1024">
+  <meta property="og:image:height" content="1024">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="xchOS — Plot-aware Linux for Chia Farming">
+  <meta name="twitter:description" content="ext4 chiaplots, automatic plot eviction, and the xchos daemon — a Linux kernel built for Chia.">
+  <meta name="twitter:image" content="https://xchos.com/images/marmot.png">
+  <meta name="twitter:image:alt" content="Vancouver Island marmot">
+
+  <link rel="icon" href="images/marmot.png" type="image/png">
+  <link rel="apple-touch-icon" href="images/marmot.png">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://xchos.com/#website",
+        "url": "https://xchos.com/",
+        "name": "xchOS",
+        "description": "Plot-aware Linux kernel fork with ext4 chiaplots and Chia farming integration.",
+        "inLanguage": "en-US",
+        "publisher": { "@id": "https://xchos.com/#organization" }
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://xchos.com/#organization",
+        "name": "xchOS",
+        "url": "https://xchos.com/",
+        "sameAs": [
+          "https://github.com/wjblanke/linux",
+          "https://node.xchos.com",
+          "https://marmots.org/"
+        ]
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://xchos.com/#software",
+        "name": "xchOS",
+        "applicationCategory": "OperatingSystem",
+        "operatingSystem": "Linux",
+        "description": "Linux kernel fork extending ext4 with /.chiaplots: adjusted statfs reporting, create restrictions, proactive plot eviction, and the xchos userland helper for Chia chiapos plotting.",
+        "url": "https://xchos.com/",
+        "downloadUrl": "https://github.com/wjblanke/linux",
+        "softwareHelp": "https://github.com/wjblanke/linux#readme",
+        "author": { "@id": "https://xchos.com/#organization" },
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        }
+      }
+    ]
+  }
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -37,7 +111,7 @@
       <span class="gradient-text">understands plots</span>
     </h1>
     <p class="hero-lead reveal">
-      xchOS extends the kernel with <code>/.chiaplots</code> — a root-level plot vault on ext4.
+      xchOS extends the Linux kernel with <code>/.chiaplots</code> — a root-level plot vault on ext4.
       Free space reporting, create restrictions, and proactive eviction work together so
       your system keeps farming without drowning in plot files.
     </p>
