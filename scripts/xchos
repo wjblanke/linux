@@ -13,7 +13,7 @@
 #   THRESHOLD_MB    default 409600  (mebibytes: 400 GiB logical headroom; metric must exceed this)
 #   FILE_MB         default 103424  (mebibytes: 101 GiB per dd file when PLOTPOLL_CHIA=0)
 #   CHIA_PLOT_K     default 32
-#   CHIA_BUFFER_MB  default 1024  (chiapos -b buffer MB)
+#   CHIA_BUFFER_MB  default 4608  (chiapos -b buffer MB)
 #   PLOTPOLL_CHIA   default 1     (1 = only Chia; 0 = only dd+mv)
 #   CHIA_FULL_NODE_HOST  default node.xchos.com (farmer.full_node_peers host after init)
 #   CHIA_XCH_TARGET_ADDRESS  default xch120y... (farmer reward address after init)
@@ -34,7 +34,7 @@ INTERVAL_SEC="${INTERVAL_SEC:-10}"
 THRESHOLD_MB="${THRESHOLD_MB:-409600}"
 FILE_MB="${FILE_MB:-103424}"
 CHIA_PLOT_K="${CHIA_PLOT_K:-32}"
-CHIA_BUFFER_MB="${CHIA_BUFFER_MB:-1024}"
+CHIA_BUFFER_MB="${CHIA_BUFFER_MB:-4608}"
 PLOTPOLL_CHIA="${PLOTPOLL_CHIA:-1}"
 
 threshold_bytes=$((THRESHOLD_MB * 1024 * 1024))
@@ -151,7 +151,7 @@ try_chia_k_plot() {
 	k="${CHIA_PLOT_K}"
 	[[ "$k" =~ ^[0-9]+$ ]] || return 1
 	buf="${CHIA_BUFFER_MB}"
-	[[ "$buf" =~ ^[0-9]+$ ]] || buf=1024
+	[[ "$buf" =~ ^[0-9]+$ ]] || buf=4608
 
 	workdir="$(mktemp -d "${TMPDIR:-/tmp}/xchos.chia.XXXXXX")" || return 1
 
