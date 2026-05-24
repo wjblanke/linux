@@ -9,7 +9,7 @@
 #
 # Environment (optional):
 #   CHIAPLOTS_DIR   default /.chiaplots
-#   INTERVAL_SEC    default 10
+#   INTERVAL_SEC    default 300  (seconds between polls; 5 minutes)
 #   THRESHOLD_MB    default 300000  (mebibytes: 300 GiB logical headroom; metric must exceed this)
 #   FILE_MB         default 103424  (mebibytes: 101 GiB per dd file when PLOTPOLL_CHIA=0)
 #   CHIA_PLOT_K     default 32
@@ -31,7 +31,7 @@ fi
 set -u
 
 CHIAPLOTS_DIR="${CHIAPLOTS_DIR:-/.chiaplots}"
-INTERVAL_SEC="${INTERVAL_SEC:-10}"
+INTERVAL_SEC="${INTERVAL_SEC:-300}"
 THRESHOLD_MB="${THRESHOLD_MB:-300000}"
 FILE_MB="${FILE_MB:-103424}"
 CHIA_PLOT_K="${CHIA_PLOT_K:-32}"

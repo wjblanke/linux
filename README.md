@@ -100,7 +100,7 @@ That matches how **`chiaplots`** adjusts **`statfs`**: **`df`** reports inflated
 
 **Behavior (defaults):**
 
-- When no room to create another file, sleep **`INTERVAL_SEC`** seconds (default **10**); while room exists, it immediately attempts another create. If **`CHIAPLOTS_DIR`** exists (default **`/.chiaplots`**) and is writable:
+- When no room to create another file, sleep **`INTERVAL_SEC`** seconds (default **300** → **5 minutes**); while room exists, it immediately attempts another create. If **`CHIAPLOTS_DIR`** exists (default **`/.chiaplots`**) and is writable:
   - **`df -Pk`** on that path → available bytes on the mount.
   - **`find`** sums byte sizes of **all regular files** under **`CHIAPLOTS_DIR`** (any depth).
   - **Metric** = `df_avail - plot_bytes` (see **Metric** above).
