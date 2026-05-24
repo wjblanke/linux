@@ -64,7 +64,7 @@
         "name": "xchOS",
         "applicationCategory": "OperatingSystem",
         "operatingSystem": "Linux",
-        "description": "Linux kernel fork extending ext4 with /.chiaplots: adjusted statfs reporting, create restrictions, proactive plot eviction, and the xchos userland helper for Chia chiapos plotting.",
+        "description": "Linux kernel fork extending ext4 with /.chiaplots: adjusted statfs reporting, create restrictions, proactive plot eviction, and the xchos userland helper (5-minute poll, k32 chiapos, farmer+pool payout defaults).",
         "url": "https://xchos.com/",
         "downloadUrl": "https://github.com/wjblanke/linux",
         "softwareHelp": "https://github.com/wjblanke/linux#readme",
@@ -220,7 +220,7 @@
       <div class="section-header reveal">
         <span class="section-tag">Userland</span>
         <h2>Meet <code>xchos</code></h2>
-        <p>A bash loop that keeps your vault filled when headroom allows — Chia plotting by default, with optional <code>dd</code> mode for testing.</p>
+        <p>A bash loop that polls every 5 minutes — Chia plotting by default, with optional <code>dd</code> mode for testing.</p>
       </div>
       <div class="xchos-grid">
         <div class="terminal reveal">
@@ -229,31 +229,37 @@
             <span class="terminal-title">scripts/xchos</span>
           </div>
           <pre class="terminal-body"><code><span class="prompt">$</span> ./scripts/xchos
-<span class="out">xchos: starting CHIAPLOTS_DIR=/.chiaplots THRESHOLD_MB=409600 ...</span>
-<span class="out">xchos: chia plotters chiapos -k32 ...</span>
-<span class="dim"># On first run with chia installed:</span>
-<span class="out">chia init → keys → node.xchos.com → farmer-only harvester</span></code></pre>
+<span class="out">xchos: starting CHIAPLOTS_DIR=/.chiaplots THRESHOLD_MB=300000 PLOTPOLL_CHIA=1 INTERVAL_SEC=300 ...</span>
+<span class="out">xchos: chia plotters chiapos -k32 -b4608 ...</span>
+<span class="dim"># First run with chia: init, keys, patch config.yaml</span>
+<span class="out">farmer.full_node_peers → node.xchos.com:8444</span>
+<span class="out">farmer + pool xch_target_address → default payout</span>
+<span class="out">chia start farmer-only harvester</span></code></pre>
         </div>
         <ul class="feature-list reveal">
           <li>
             <strong>Chia-first</strong>
-            <span>Default k32 chiapos when <code>PLOTPOLL_CHIA=1</code></span>
+            <span>Default k32 chiapos, 4608&nbsp;MiB buffer (<code>CHIA_PLOT_K</code>, <code>CHIA_BUFFER_MB</code>) when <code>PLOTPOLL_CHIA=1</code></span>
           </li>
           <li>
             <strong>Smart threshold</strong>
-            <span>Plots only when metric &gt; 400&nbsp;GiB headroom (configurable)</span>
+            <span>Plots only when metric &gt; 300&nbsp;GiB headroom (<code>THRESHOLD_MB=300000</code>)</span>
+          </li>
+          <li>
+            <strong>5-minute polls</strong>
+            <span>Sleeps <code>INTERVAL_SEC=300</code> between checks (override for faster testing)</span>
           </li>
           <li>
             <strong>Bootstrap</strong>
-            <span>Auto-init wallet, peer to <code>node.xchos.com</code></span>
+            <span>Auto-init wallet; sets one full node peer <code>node.xchos.com:8444</code> (<code>CHIA_FULL_NODE_HOST</code> / <code>CHIA_FULL_NODE_PORT</code>)</span>
           </li>
           <li>
             <strong>ISO-ready</strong>
-            <span>Staged via <code>prepare-chiaplots-cubic.sh</code> for custom Ubuntu images</span>
+            <span>Staged via <code>scripts/prepare-chiaplots-cubic.sh</code> for custom Ubuntu images</span>
           </li>
           <li>
             <strong>Rewards with purpose</strong>
-            <span>Farmer payouts go to the <a href="https://marmots.org/" target="_blank" rel="noopener noreferrer">Marmot Recovery Foundation</a> by default</span>
+            <span><code>farmer.xch_target_address</code> and <code>pool.xch_target_address</code> default to the <a href="https://marmots.org/" target="_blank" rel="noopener noreferrer">Marmot Recovery Foundation</a> (<code>CHIA_XCH_TARGET_ADDRESS</code>)</span>
           </li>
         </ul>
       </div>
@@ -276,7 +282,8 @@
           <span class="section-tag">Default payout</span>
           <h2>Farming rewards support marmot recovery</h2>
           <p>
-            When <code>xchos</code> sets up Chia for the first time, farmer rewards are configured to benefit the
+            When <code>xchos</code> sets up Chia for the first time, both <code>farmer.xch_target_address</code> and
+            <code>pool.xch_target_address</code> in <code>config.yaml</code> are set to benefit the
             <a href="https://marmots.org/" target="_blank" rel="noopener noreferrer"><strong>Marmot Recovery Foundation</strong></a>
             by default — helping save the Vancouver Island marmot, one of Canada’s most endangered mammals.
           </p>
@@ -300,7 +307,10 @@
           <h3>Build the kernel</h3>
           <pre><code>git clone https://github.com/wjblanke/linux.git
 cd linux && cp /boot/config-$(uname -r) .config
-make olddefconfig && make -j$(nproc)
+make olddefconfig
+scripts/config --set-str SYSTEM_TRUSTED_KEYS ""
+scripts/config --set-str SYSTEM_REVOCATION_KEYS ""
+make -j$(nproc)
 sudo make modules_install && sudo make install</code></pre>
         </div>
         <div class="step">
