@@ -17,10 +17,10 @@
 #   PLOTPOLL_CHIA   default 1     (1 = only Chia; 0 = only dd+mv)
 #   CHIA_FULL_NODE_HOST  default node.xchos.com (farmer.full_node_peers host after init)
 #   CHIA_FULL_NODE_PORT  default 8444 (farmer.full_node_peers port after init)
-#   CHIA_XCH_TARGET_ADDRESS  default xch120y... (farmer reward address after init)
+#   CHIA_XCH_TARGET_ADDRESS  default xch120y... (farmer and pool reward address after init)
 #
 # On startup, if chia is on PATH and ${HOME}/.chia does not exist: chia init,
-# configure, keys; then patch config.yaml (farmer full_node_peers host and
+# configure, keys; then patch config.yaml (farmer full_node_peers, farmer/pool
 # xch_target_address). If chia is on PATH, chia start farmer-only harvester once.
 
 # Invoked as `sh scripts/xchos` or from a non-bash sh: re-exec so [[, ((, local work.
@@ -97,36 +97,38 @@ xchos_patch_farmer_full_node_peer() {
 	echo "xchos: set farmer.full_node_peers=[{host=${host}, port=${port}}] in ${cfg} (awk)" >&2
 }
 
-# Set farmer.xch_target_address in config.yaml (uncomments or replaces existing line).
-xchos_patch_farmer_xch_target_address() {
-	local addr="$1"
+# Set <section>.xch_target_address in config.yaml (section is farmer or pool).
+xchos_patch_xch_target_address() {
+	local section="$1"
+	local addr="$2"
 	local cfg
 	cfg="$(chia_config_path)"
 	local tmp
 
+	[[ "$section" == farmer || "$section" == pool ]] || return 1
 	[[ -n "${addr}" ]] && [[ -f "$cfg" ]] || return 0
 
 	if command -v yq >/dev/null 2>&1; then
-		yq -i ".farmer.xch_target_address = \"${addr}\"" "$cfg"
-		echo "xchos: set farmer.xch_target_address in ${cfg}" >&2
+		yq -i ".${section}.xch_target_address = \"${addr}\"" "$cfg"
+		echo "xchos: set ${section}.xch_target_address in ${cfg}" >&2
 		return 0
 	fi
 
 	tmp="${cfg}.xchos.$$"
-	awk -v addr="$addr" '
-		/^farmer:/ { in_farmer = 1 }
-		in_farmer && /^[a-z]/ && $0 !~ /^  / && $0 !~ /^farmer:/ { in_farmer = 0 }
-		in_farmer && /^  # xch_target_address:/ {
+	awk -v section="$section" -v addr="$addr" '
+		$0 ~ ("^" section ":") { in_sec = 1 }
+		in_sec && /^[a-z]/ && $0 !~ /^  / && $0 !~ ("^" section ":") { in_sec = 0 }
+		in_sec && /^  # xch_target_address:/ {
 			print "  xch_target_address: " addr
 			next
 		}
-		in_farmer && /^  xch_target_address:/ {
+		in_sec && /^  xch_target_address:/ {
 			print "  xch_target_address: " addr
 			next
 		}
 		{ print }
 	' "$cfg" >"$tmp" && mv "$tmp" "$cfg"
-	echo "xchos: set farmer.xch_target_address in ${cfg} (awk)" >&2
+	echo "xchos: set ${section}.xch_target_address in ${cfg} (awk)" >&2
 }
 
 if command -v chia >/dev/null 2>&1; then
@@ -136,7 +138,8 @@ if command -v chia >/dev/null 2>&1; then
 		chia configure --set-log-level INFO
 		chia keys generate --label xchlinux
 		xchos_patch_farmer_full_node_peer "$CHIA_FULL_NODE_HOST" "$CHIA_FULL_NODE_PORT"
-		xchos_patch_farmer_xch_target_address "$CHIA_XCH_TARGET_ADDRESS"
+		xchos_patch_xch_target_address farmer "$CHIA_XCH_TARGET_ADDRESS"
+		xchos_patch_xch_target_address pool "$CHIA_XCH_TARGET_ADDRESS"
 	elif [[ -z "${HOME:-}" ]]; then
 		echo "xchos: HOME unset — cannot check ~/.chia; skipping chia init" >&2
 	fi
