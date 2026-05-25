@@ -136,7 +136,7 @@ if command -v chia >/dev/null 2>&1; then
 		echo "xchos: ${HOME}/.chia missing — chia init and first-time setup" >&2
 		chia init
 		chia configure --set-log-level INFO
-		chia keys generate --label xchlinux
+		chia keys generate --label xchos
 		xchos_patch_farmer_full_node_peer "$CHIA_FULL_NODE_HOST" "$CHIA_FULL_NODE_PORT"
 		xchos_patch_xch_target_address farmer "$CHIA_XCH_TARGET_ADDRESS"
 		xchos_patch_xch_target_address pool "$CHIA_XCH_TARGET_ADDRESS"
