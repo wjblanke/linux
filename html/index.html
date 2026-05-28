@@ -305,7 +305,7 @@
         <div class="step">
           <span class="step-n">1</span>
           <h3>Build the kernel</h3>
-          <pre><code>git clone https://github.com/wjblanke/linux.git
+          <pre><code>git clone --depth 1 https://github.com/wjblanke/linux.git
 cd linux && cp /boot/config-$(uname -r) .config
 make olddefconfig
 scripts/config --set-str SYSTEM_TRUSTED_KEYS ""
@@ -385,7 +385,7 @@ sudo reboot</code></pre>
         <div class="repo-clone">
           <label for="clone-url">Clone</label>
           <div class="repo-clone-row">
-            <code id="clone-url">git clone https://github.com/wjblanke/linux.git</code>
+            <code id="clone-url">git clone --depth 1 https://github.com/wjblanke/linux.git</code>
             <button type="button" class="btn-copy" id="copy-clone" aria-label="Copy clone URL">Copy</button>
           </div>
         </div>
