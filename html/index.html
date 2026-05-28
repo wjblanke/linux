@@ -99,6 +99,7 @@
       <li><a href="#xchos">xchos</a></li>
       <li><a href="#giving">Giving</a></li>
       <li><a href="#build">Build</a></li>
+      <li><a href="#iso">ISO</a></li>
       <li><a href="#source">Source</a></li>
       <li><a href="https://github.com/wjblanke/linux" class="nav-cta" target="_blank" rel="noopener noreferrer">GitHub</a></li>
     </ul>
@@ -327,12 +328,41 @@ sudo reboot</code></pre>
 # or install to /usr/local/bin/xchos from a Cubic ISO build</code></pre>
         </div>
       </div>
+    </section>
+
+    <section class="section section-alt" id="iso">
+      <div class="section-header reveal">
+        <span class="section-tag">Downloads</span>
+        <h2>xchOS live server ISOs</h2>
+        <p>Pre-built Ubuntu 24.04.4 live images with the xchOS kernel, <code>/.chiaplots</code>, Chia CLI, and <code>xchos</code>. Pick the architecture that matches your hardware.</p>
+      </div>
+      <ul class="iso-downloads reveal">
+        <li class="iso-card">
+          <div class="iso-card-head">
+            <span class="iso-arch">amd64</span>
+            <span class="iso-size">3.6&nbsp;GiB</span>
+          </div>
+          <p class="iso-name">xchos-24.04.4-2026.05.25-live-server-amd64.iso</p>
+          <p class="iso-meta">x86_64 PCs and servers</p>
+          <a href="isos/xchos-24.04.4-2026.05.25-live-server-amd64.iso" class="btn btn-primary" download>Download ISO</a>
+        </li>
+        <li class="iso-card">
+          <div class="iso-card-head">
+            <span class="iso-arch">arm64</span>
+            <span class="iso-size">3.4&nbsp;GiB</span>
+          </div>
+          <p class="iso-name">xchos-24.04.4-2026.05.25-live-server-arm64.iso</p>
+          <p class="iso-meta">ARM64 / AArch64 machines</p>
+          <a href="isos/xchos-24.04.4-2026.05.25-live-server-arm64.iso" class="btn btn-primary" download>Download ISO</a>
+        </li>
+      </ul>
+      <p class="iso-note reveal">Verify downloads after transfer (e.g. <code>sha256sum</code>). Live sessions use casper overlay; for full chiaplots behavior, install to disk with ext4 root — see <a href="https://github.com/wjblanke/linux#minimal-ubuntu-distribution-cubic">README</a>.</p>
       <div class="iso-banner reveal">
         <div>
-          <h3>Custom Ubuntu ISO</h3>
-          <p>Remix an official image with Cubic — drop in your kernel <code>.deb</code>, Chia CLI, and <code>xchos</code> using <code>scripts/prepare-chiaplots-cubic.sh</code>.</p>
+          <h3>Build your own ISO</h3>
+          <p>Remix an official Ubuntu image with Cubic — drop in your kernel <code>.deb</code>, Chia CLI, and <code>xchos</code> using <code>scripts/prepare-chiaplots-cubic.sh</code>.</p>
         </div>
-        <a href="https://github.com/wjblanke/linux#minimal-ubuntu-distribution-cubic" class="btn btn-primary" target="_blank" rel="noopener noreferrer">Read the guide</a>
+        <a href="https://github.com/wjblanke/linux#minimal-ubuntu-distribution-cubic" class="btn btn-ghost" target="_blank" rel="noopener noreferrer">Cubic build guide</a>
       </div>
     </section>
 
