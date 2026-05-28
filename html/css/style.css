@@ -576,7 +576,7 @@ code {
 .giving-card {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 2rem 2.5rem;
   padding: 2.5rem clamp(1.5rem, 4vw, 3rem);
   background: linear-gradient(135deg, rgba(180, 140, 90, 0.12), rgba(62, 207, 110, 0.08));
@@ -588,14 +588,14 @@ code {
 .giving-figure {
   flex-shrink: 0;
   margin: 0;
-  text-align: center;
+  text-align: left;
 }
 
 .giving-marmot {
   display: block;
   width: min(280px, 100%);
   height: auto;
-  margin: 0 auto;
+  margin: 0;
   border-radius: var(--radius);
   border: 2px solid rgba(200, 160, 100, 0.35);
   box-shadow:
